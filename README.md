@@ -12,21 +12,44 @@ probability, and not financial advice. See [The honest part](#the-honest-part).
 
 ## Running it
 
+**Windows**
+
 ```powershell
-cd "C:\Users\excellogics\Desktop\Quick Access\Projects\T\sentinel"
-.\run.ps1
+git clone https://github.com/Zkiel013/Sentinel.git
+cd Sentinel
+.un.ps1
+```
+
+**macOS / Linux**
+
+```bash
+git clone https://github.com/Zkiel013/Sentinel.git
+cd Sentinel
+./run.sh
 ```
 
 Then open <http://localhost:8777>. `Ctrl+C` to stop.
+Use `-Port 8888` (or `PORT=8888 ./run.sh`) to run on another port.
 
-First run creates `.venv` and installs dependencies (a minute or two); after
-that it starts immediately.
+First run creates `.venv` and installs from `requirements.txt` — a minute or two.
+After that it starts immediately. Nothing else is needed: the database, preferences
+and default rules are all created on first launch.
 
-If PowerShell blocks the script, allow local scripts once:
+Needs Python 3.10+. No API key, no account, no frontend build step.
+
+If PowerShell blocks the script:
 
 ```powershell
 Set-ExecutionPolicy -Scope CurrentUser RemoteSigned
 ```
+
+### Keep the checkout path short
+
+Clone somewhere like `C:\dev\sentinel`. Windows caps paths at 260 characters
+unless long-path support is enabled, and `site-packages` paths inside a venv are
+long — a deeply nested checkout fails while building the virtual environment,
+with an error that points nowhere useful. `run.ps1` warns when the path looks
+risky.
 
 ### Why a launcher rather than `python -m uvicorn`
 
