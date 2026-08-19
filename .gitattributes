@@ -1,0 +1,6 @@
+# Normalise line endings: store LF in the repo, check out native on Windows.
+# Without this, every file committed from Windows shows as fully rewritten when
+# viewed or edited on Linux/macOS.
+* text=auto eol=lf
+*.ps1 text eol=crlf
+*.db binary

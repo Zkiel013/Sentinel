@@ -1,0 +1,2024 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sentinel — Crypto Setup Monitor</title>
+<script src="https://unpkg.com/lightweight-charts@4.2.0/dist/lightweight-charts.standalone.production.js"></script>
+<style>
+/* ---------------------------------------------------------------- themes
+   Three palettes on one variable contract. Everything below styles against
+   the variables only, so a theme switch is a single attribute change and no
+   reflow of rules. Replaced the Tailwind CDN build, which recompiled every
+   class at runtime on each page load. */
+/* Tuned for long sessions rather than maximum contrast: neutrals carry a
+   slight blue-grey warmth instead of being pure black or white, body text
+   sits near 80% rather than 100% against the background, and the semantic
+   colours are desaturated so a screen full of green and red chips does not
+   vibrate. Candles and indicator lines get their own variables — a chart
+   needs stronger, more separated colour than UI text does. */
+/* Candles keep a ~1.7:1 luminance gap between up and down, so direction still
+   reads if hue is lost to a colour deficiency. The gap is opened by pushing the
+   up colour *brighter* rather than the down colour darker — darkening down was
+   what made the whole chart look washed out. Both sides stay high-chroma; only
+   the UI text colours are desaturated. */
+:root[data-theme="dark"]{
+  color-scheme:dark;
+  --bg:#0f1319; --bg2:#161b23; --bg3:#1d232d; --line:#272e39; --line2:#343d4a;
+  --fg:#c4ccd6; --fg2:#8a94a3; --fg3:#6b7583;
+  --accent:#5a8cd8; --accent-fg:#fff;
+  --up:#4ec98d; --down:#ee7078; --warn:#cfa348; --info:#54a5d4; --flip:#a37fdb;
+  --grid:#1a202a; --shadow:0 8px 30px rgba(0,0,0,.55);
+  --candle-up:#2ecf98; --candle-up-line:#4ee5ae;
+  --candle-down:#f0555f; --candle-down-line:#ff737b;
+  --ema9:#5ba3e0; --ema21:#a983dd; --ema200:#cda254;
+}
+:root[data-theme="medium"]{
+  color-scheme:dark;
+  --bg:#232932; --bg2:#2b323c; --bg3:#343c48; --line:#3f4855; --line2:#4f5967;
+  --fg:#d8dee7; --fg2:#a0aab7; --fg3:#828c99;
+  --accent:#79a5e6; --accent-fg:#fff;
+  --up:#5ad39a; --down:#f4807f; --warn:#d8ab52; --info:#6ab7e0; --flip:#b492e8;
+  --grid:#2d343e; --shadow:0 8px 30px rgba(0,0,0,.4);
+  --candle-up:#33d69c; --candle-up-line:#52ebb4;
+  --candle-down:#f4606a; --candle-down-line:#ff7d84;
+  --ema9:#77b3e8; --ema21:#b892e6; --ema200:#dcb463;
+}
+:root[data-theme="light"]{
+  color-scheme:light;
+  --bg:#f3f5f8; --bg2:#fbfcfd; --bg3:#e9edf2; --line:#dce2e9; --line2:#c3ccd7;
+  --fg:#2c3542; --fg2:#5c6774; --fg3:#767f8b;
+  --accent:#2f6fd0; --accent-fg:#fff;
+  --up:#137a53; --down:#bc4442; --warn:#82600b; --info:#186f8e; --flip:#6a4bc0;
+  --grid:#e6eaef; --shadow:0 6px 24px rgba(30,40,60,.10);
+  /* on a light ground the polarity flips: down is the brighter of the two,
+     because both still have to stay dark enough to read against near-white */
+  --candle-up:#007a54; --candle-up-line:#005c3f;
+  --candle-down:#ee4a44; --candle-down-line:#cf302f;
+  --ema9:#2c6fc9; --ema21:#7a53c4; --ema200:#8a6608;
+}
+
+*{box-sizing:border-box}
+body{margin:0;height:100vh;overflow:hidden;display:flex;flex-direction:column;
+  background:var(--bg);color:var(--fg);
+  font:14px/1.5 ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;
+  -webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale}
+b,strong{font-weight:600}
+a{color:var(--accent)}
+
+/* layout helpers */
+.row{display:flex;align-items:center;gap:10px}
+.col{display:flex;flex-direction:column}
+.wrap{flex-wrap:wrap}
+.grow{flex:1}
+.min0{min-width:0;min-height:0}
+.sp{flex:1}
+.stack>*+*{margin-top:8px}
+.stack-lg>*+*{margin-top:16px}
+.hide{display:none !important}
+
+/* surfaces */
+.card{background:var(--bg2);border:1px solid var(--line);border-radius:12px}
+.pad{padding:12px}
+.pad-lg{padding:16px}
+.muted{color:var(--fg2)}
+.dim{color:var(--fg3)}
+.xs{font-size:11px}
+.sm{font-size:12.5px}
+.mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+.up{color:var(--up)} .down{color:var(--down)} .warn{color:var(--warn)}
+.info{color:var(--info)} .flip{color:var(--flip)}
+hr.sep{border:0;border-top:1px solid var(--line);margin:10px 0}
+
+.chip{font-size:11px;padding:2px 8px;border-radius:999px;background:var(--bg3);
+  color:var(--fg2);border:1px solid var(--line);white-space:nowrap}
+.chip.solid{background:var(--accent);color:var(--accent-fg);border-color:transparent}
+.chip.ok{color:var(--up);border-color:color-mix(in srgb,var(--up) 40%,transparent)}
+.chip.bad{color:var(--down);border-color:color-mix(in srgb,var(--down) 40%,transparent)}
+
+button{font:inherit;color:inherit;cursor:pointer;border:1px solid var(--line);
+  background:var(--bg3);padding:5px 12px;border-radius:8px}
+button:hover{background:var(--line)}
+button.primary{background:var(--accent);color:var(--accent-fg);border-color:transparent}
+button.primary:hover{filter:brightness(1.1)}
+button.danger{background:color-mix(in srgb,var(--down) 22%,var(--bg3));
+  border-color:color-mix(in srgb,var(--down) 45%,transparent);color:var(--down)}
+button.tiny{padding:1px 7px;font-size:11.5px}
+button.active{background:var(--accent);color:var(--accent-fg);border-color:transparent}
+button.ghost{background:transparent;border-color:transparent;color:var(--fg2)}
+button.ghost:hover{background:var(--bg3);color:var(--fg)}
+
+input,select,textarea{font:inherit;background:var(--bg);color:var(--fg);
+  border:1px solid var(--line2);border-radius:8px;padding:4px 8px}
+input:focus,select:focus{outline:2px solid color-mix(in srgb,var(--accent) 45%,transparent);
+  outline-offset:-1px}
+input[type=checkbox]{accent-color:var(--accent);width:14px;height:14px}
+input[type=range]{accent-color:var(--accent);padding:0}
+label.inline{display:inline-flex;align-items:center;gap:5px;margin-right:12px;
+  font-size:13px;cursor:pointer}
+
+::-webkit-scrollbar{width:9px;height:9px}
+::-webkit-scrollbar-thumb{background:var(--line2);border-radius:5px}
+::-webkit-scrollbar-track{background:transparent}
+
+/* header / shell */
+#top{border-bottom:1px solid var(--line);padding:7px 12px;gap:8px}
+#brand{font-weight:700;font-size:15px;letter-spacing:-.2px}
+#note{border-bottom:1px solid var(--line);padding:4px 12px;font-size:11px;color:var(--fg3)}
+#body{display:flex;flex:1;min-height:0}
+#side{width:224px;border-right:1px solid var(--line);padding:10px;overflow-y:auto;flex-shrink:0}
+#strip{width:24px;border-right:1px solid var(--line);flex-shrink:0;cursor:pointer;
+  display:none;align-items:center;justify-content:center;color:var(--fg3)}
+#strip:hover{background:var(--bg3);color:var(--fg)}
+#center{flex:1;display:flex;flex-direction:column;min-width:0}
+#chartWrap{position:relative;height:46%}
+#chart{position:absolute;inset:0}
+#zoneCanvas{position:absolute;inset:0;pointer-events:none}
+#divider{height:26px;border-top:1px solid var(--line);border-bottom:1px solid var(--line);
+  background:var(--bg2);padding:0 10px;cursor:row-resize;user-select:none;font-size:11.5px;
+  overflow:hidden;white-space:nowrap}
+#dividerHint{overflow:hidden;text-overflow:clip}
+#divider label{flex-shrink:0}
+#panel{flex:1;min-height:0;overflow-y:auto;padding:12px}
+.sectitle{font-size:10.5px;text-transform:uppercase;letter-spacing:.7px;color:var(--fg3);
+  margin-bottom:5px}
+
+/* watchlist */
+.wl{display:flex;align-items:center;justify-content:space-between;padding:4px 7px;
+  border-radius:7px;cursor:pointer}
+.wl:hover{background:var(--bg3)}
+.wl.on{background:color-mix(in srgb,var(--accent) 22%,transparent)}
+
+/* score display */
+.scorewrap{display:grid;grid-template-columns:auto 1fr;gap:18px;align-items:center}
+.bignum{font-size:44px;font-weight:700;line-height:1;font-family:ui-monospace,monospace}
+.meter{height:10px;border-radius:999px;background:var(--bg3);overflow:hidden;position:relative}
+.meter>i{display:block;height:100%;border-radius:999px}
+.action{font-size:13px;font-weight:700;letter-spacing:.8px;padding:3px 12px;border-radius:8px}
+.action.buy{background:color-mix(in srgb,var(--up) 22%,transparent);color:var(--up)}
+.action.sell{background:color-mix(in srgb,var(--down) 22%,transparent);color:var(--down)}
+.action.wait{background:var(--bg3);color:var(--fg2)}
+
+/* component rows */
+.comp{border:1px solid var(--line);border-radius:10px;overflow:hidden;background:var(--bg2)}
+.comp>summary{padding:8px 10px;cursor:pointer;display:flex;align-items:center;gap:10px;
+  list-style:none;font-size:13px}
+.comp>summary::-webkit-details-marker{display:none}
+.comp[open]>summary{border-bottom:1px solid var(--line);background:var(--bg3)}
+.comp .doc{padding:10px;font-size:12.5px;color:var(--fg2)}
+.comp .doc b{color:var(--fg)}
+.bar{width:110px;height:7px;border-radius:999px;background:var(--bg3);position:relative;
+  flex-shrink:0}
+.bar>i{position:absolute;top:0;bottom:0;border-radius:999px}
+.bar::after{content:'';position:absolute;left:50%;top:-2px;bottom:-2px;width:1px;
+  background:var(--line2)}
+
+/* tables */
+table.t{width:100%;border-collapse:collapse;font-size:12.5px}
+table.t th{text-align:left;color:var(--fg3);font-weight:500;font-size:11px;
+  text-transform:uppercase;letter-spacing:.5px;padding:5px 8px;border-bottom:1px solid var(--line)}
+table.t td{padding:5px 8px;border-bottom:1px solid var(--line)}
+table.t tr:last-child td{border-bottom:0}
+table.t tr.bad td{background:color-mix(in srgb,var(--down) 12%,transparent)}
+
+/* gate status strip on the Analysis tab */
+.gatebar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:14px;
+  padding:8px 10px;border-radius:9px;border:1px solid var(--line)}
+.gatebar.pass{background:color-mix(in srgb,var(--up) 10%,transparent);
+  border-color:color-mix(in srgb,var(--up) 35%,transparent)}
+.gatebar.block{background:color-mix(in srgb,var(--warn) 12%,transparent);
+  border-color:color-mix(in srgb,var(--warn) 38%,transparent)}
+
+/* 24-hour IST session-quality map */
+.hmap{display:grid;grid-template-columns:repeat(24,1fr);gap:3px;margin-top:10px}
+.hcell{display:flex;flex-direction:column;align-items:center;gap:3px;cursor:pointer;
+  border-radius:6px;padding:3px 0;border:2px solid transparent}
+.hcell:hover{background:var(--bg3)}
+.hcell.now{border-color:var(--accent);background:color-mix(in srgb,var(--accent) 12%,transparent)}
+.hbar{width:100%;height:64px;display:flex;align-items:flex-end;
+  background:var(--bg3);border-radius:4px;overflow:hidden}
+.hbar>i{display:block;width:100%;border-radius:4px 4px 0 0}
+.hnum{font-size:10px;line-height:1}
+.hlab{font-size:10px;line-height:1}
+i.swatch{display:inline-block;width:10px;height:10px;border-radius:3px;
+  vertical-align:-1px;margin-right:4px}
+
+ul.list{margin:6px 0 0;padding-left:18px}
+ul.list li{margin-bottom:4px;color:var(--fg2);font-size:12.5px}
+
+/* feed / alert cards */
+.tier{border-left:4px solid var(--fg3)}
+.tier.high{border-left-color:var(--up)}
+.tier.med{border-left-color:var(--warn)}
+.click{cursor:pointer}
+.click:hover{background:var(--bg3)}
+
+/* overlays */
+.modal{position:fixed;inset:0;z-index:100;background:rgba(0,0,0,.6);
+  backdrop-filter:blur(2px)}
+.modal>.sheet{position:absolute;top:4%;left:50%;transform:translateX(-50%);
+  width:min(820px,94vw);max-height:90%;display:flex;flex-direction:column;
+  box-shadow:var(--shadow)}
+#pop{position:absolute;z-index:50;max-width:440px;max-height:74%;overflow-y:auto;
+  box-shadow:var(--shadow);display:none}
+.dl{margin:0}
+.dl dt{font-weight:600;font-size:12.5px;margin-top:9px}
+.dl dd{margin:2px 0 0;font-size:12.5px;color:var(--fg2)}
+h4.h{font-size:14px;margin:16px 0 6px}
+</style>
+</head>
+<body>
+
+<div class="row" id="top">
+  <div id="brand">🛰️ Sentinel</div>
+  <div id="conn" class="chip">connecting…</div>
+  <select id="symSel"></select>
+  <select id="tfSel"></select>
+  <div id="closeTimer" class="chip mono" title="Time until the current candle closes"></div>
+  <select id="tzSel" title="Chart and timestamp timezone"></select>
+  <select id="themeSel" title="Colour theme"></select>
+  <div id="fundingChip" class="chip"></div>
+  <div class="sp"></div>
+  <a href="/strategies" target="_blank" class="chip" style="text-decoration:none"
+     title="Every detector's exact long / short / neutral conditions">📐 Strategies</a>
+  <div class="row" id="tabs" style="gap:4px"></div>
+</div>
+<div id="note">
+  Detects setup <b>occurrences</b> and scores how many live conditions agree.
+  Not a probability, not an expected return, not financial advice.
+</div>
+
+<div id="body">
+  <div id="strip" onclick="toggleSide()" title="Expand panel">
+    <div class="xs" style="writing-mode:vertical-rl;padding:12px 0">» watchlist</div>
+  </div>
+  <div id="side">
+    <div class="row" style="margin-bottom:4px">
+      <div class="sectitle" style="margin:0">Watchlist</div><div class="sp"></div>
+      <button class="ghost tiny" onclick="toggleSide()" title="Collapse">«</button>
+    </div>
+    <div id="watchlist" class="stack" style="margin-bottom:8px"></div>
+    <div class="row" style="gap:4px;margin-bottom:16px">
+      <input id="newSym" placeholder="e.g. SOLUSDT" class="grow xs" style="min-width:0">
+      <button class="tiny" onclick="addSymbol()">+</button>
+    </div>
+    <div class="sectitle">Scalping playbook</div>
+    <div id="playbook" class="stack" style="margin-bottom:14px"></div>
+    <div class="sectitle">All setups monitored</div>
+    <div id="setupToggles"></div>
+  </div>
+
+  <div id="center">
+    <div id="chartWrap">
+      <div id="chart"></div>
+      <canvas id="zoneCanvas"></canvas>
+      <div id="pop" class="card pad"></div>
+    </div>
+    <div class="row" id="divider">
+      <div class="grow dim" id="dividerHint" style="text-align:center">⋯ drag to resize ⋯</div>
+      <label class="inline dim" style="cursor:default" onmousedown="event.stopPropagation()">
+        zones
+        <select id="zoneSel" class="xs"><option value="all">all</option>
+          <option value="major">major only</option><option value="off">off</option></select>
+      </label>
+      <label class="inline dim" style="cursor:default" onmousedown="event.stopPropagation()">
+        markers
+        <select id="markerSel" class="xs"><option value="off">off</option>
+          <option value="alerts">alerts</option><option value="all">all</option></select>
+      </label>
+      <label class="inline dim" style="cursor:default" onmousedown="event.stopPropagation()">
+        <input type="checkbox" id="centerChk"
+               onchange="centerLive=this.checked;applyCenterMode()">
+        centre live candle
+      </label>
+      <button class="tiny" onmousedown="event.stopPropagation()" onclick="resetView()"
+              title="Fit all bars and forget the remembered zoom">⤢ fit</button>
+      <button id="collapseBtn" class="tiny" onmousedown="event.stopPropagation()">▼ collapse</button>
+    </div>
+    <div id="panel"></div>
+  </div>
+</div>
+
+<div id="helpModal" class="modal hide" onclick="if(event.target===this)closeModal('helpModal')">
+  <div class="sheet card">
+    <div class="row pad" style="border-bottom:1px solid var(--line)">
+      <b>🛰️ Sentinel — manual</b><div class="sp"></div>
+      <button onclick="closeModal('helpModal')">✕ close (Esc)</button>
+    </div>
+    <div id="helpBody" class="pad-lg" style="overflow-y:auto"></div>
+  </div>
+</div>
+
+<div id="detailModal" class="modal hide" onclick="if(event.target===this)closeModal('detailModal')">
+  <div class="sheet card">
+    <div class="row pad" style="border-bottom:1px solid var(--line)">
+      <b id="detailTitle"></b><div class="sp"></div>
+      <button onclick="closeModal('detailModal')">✕ close (Esc)</button>
+    </div>
+    <div id="detailBody" class="pad-lg" style="overflow-y:auto"></div>
+  </div>
+</div>
+
+<script>
+/* ================================================================ state */
+const S = { symbols:[], timeframes:[], enabled:[], all:[], categories:{},
+  playbook:[], sym:'BTCUSDT', tf:'5m', tab:'analysis', feed:[], alerts:[],
+  rules:[], prefs:{}, funding:{}, analysis:null, zones:[], candles:[], docs:null,
+  timing:null };
+
+const $  = id => document.getElementById(id);
+const api = (p,opt) => fetch('/api/'+p,opt).then(r=>r.json());
+const post = (p,body) => api(p,{method:'POST',
+  headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+const esc = s => String(s??'').replace(/[&<>"]/g,c=>
+  ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const num = (v,d=2) => (v===null||v===undefined||Number.isNaN(v))
+  ? '—' : Number(v).toLocaleString('en-US',{minimumFractionDigits:d,maximumFractionDigits:d});
+const pct = (v,d=2) => v===null||v===undefined ? '—' : (v*100).toFixed(d)+'%';
+const cssVar = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+const tierOf = s => s>=60?'high':s>=35?'med':'low';
+const scoreColor = s => s>=60?'var(--up)':s>=35?'var(--warn)':'var(--fg3)';
+
+const TABS = [['analysis','Analysis'],['timing','Timing'],['feed','Feed'],
+              ['alerts','Alerts'],['rules','Rules'],['settings','Settings']];
+
+const TIER_COLOR = {prime:'var(--up)', good:'var(--up)', fair:'var(--warn)',
+                    poor:'var(--down)', avoid:'var(--down)'};
+const tierColor = t => TIER_COLOR[t] || 'var(--fg3)';
+
+/* ================================================================ theme */
+const THEMES = [['dark','Dark'],['medium','Medium'],['light','Light']];
+let THEME = localStorage.getItem('theme') || 'dark';
+function applyTheme(t){
+  THEME = t; document.documentElement.dataset.theme = t;
+  localStorage.setItem('theme',t);
+  if(chart) themeChart();
+  drawZones();
+  post('prefs',{theme:t}).catch(()=>{});
+}
+
+/* ================================================================ timezone */
+const TIMEZONES = [['Asia/Kolkata','IST (Kolkata)'],['UTC','UTC'],
+  ['America/New_York','New York'],['Europe/London','London'],
+  ['Europe/Berlin','Berlin'],['Asia/Dubai','Dubai'],['Asia/Singapore','Singapore'],
+  ['Asia/Tokyo','Tokyo'],[Intl.DateTimeFormat().resolvedOptions().timeZone,'Browser local']];
+let TZ = localStorage.getItem('tz') || 'Asia/Kolkata';
+function tzOffsetSec(tz,d=new Date()){
+  const loc = new Date(d.toLocaleString('en-US',{timeZone:tz}));
+  const utc = new Date(d.toLocaleString('en-US',{timeZone:'UTC'}));
+  return Math.round((loc-utc)/1000);
+}
+let TZ_OFF = tzOffsetSec(TZ);
+const shiftT = t => t + TZ_OFF;   // the chart renders UTC; shift epochs to display tz
+const fmtT = ts => new Date(ts*1000).toLocaleTimeString('en-GB',{timeZone:TZ,hour12:false});
+const fmtDT = ts => new Date(ts*1000).toLocaleString('en-GB',{timeZone:TZ,hour12:false});
+
+/* ================================================================ sounds */
+const SOUND_DEFAULTS = { breakout:{freq:880,pattern:[0.12,0.06,0.12]},
+  reversion:{freq:520,pattern:[0.25]}, trend:{freq:660,pattern:[0.1,0.05,0.1,0.05,0.1]},
+  flow:{freq:990,pattern:[0.08,0.04,0.08,0.04,0.08,0.04,0.08]},
+  smc:{freq:440,pattern:[0.3]}, high_priority:{freq:1180,pattern:[0.1,0.05,0.1,0.05,0.3]} };
+let soundCfg = JSON.parse(localStorage.getItem('soundCfg')||'{}');
+const soundConf = c => Object.assign(
+  {enabled:true,volume:0.5,cooldown:5,repeat:1,custom:null}, soundCfg[c]||{});
+let lastSound = {}, audioCtx = null;
+function beep(freq,pattern,vol){
+  audioCtx = audioCtx || new (window.AudioContext||window.webkitAudioContext)();
+  let t = audioCtx.currentTime;
+  pattern.forEach((dur,i)=>{
+    if(i%2===0){ const o=audioCtx.createOscillator(), g=audioCtx.createGain();
+      o.frequency.value=freq; o.type='sine'; o.connect(g); g.connect(audioCtx.destination);
+      g.gain.setValueAtTime(vol,t); g.gain.exponentialRampToValueAtTime(0.001,t+dur);
+      o.start(t); o.stop(t+dur); }
+    t += dur; });
+}
+function playCat(cat){
+  const c = soundConf(cat); if(!c.enabled) return;
+  const now = Date.now()/1000;
+  if(now-(lastSound[cat]||0) < c.cooldown) return;
+  lastSound[cat] = now;
+  for(let r=0;r<c.repeat;r++) setTimeout(()=>{
+    if(c.custom){ const a=new Audio(c.custom); a.volume=c.volume; a.play().catch(()=>{}); }
+    else { const d=SOUND_DEFAULTS[cat]||SOUND_DEFAULTS.trend; beep(d.freq,d.pattern,c.volume); }
+  }, r*1200);
+}
+const catOfSetup = n => Object.entries(S.categories)
+  .find(([,l])=>l.includes(n))?.[0] || 'trend';
+
+/* ================================================================ chart */
+let chart, candleSeries, ema9S, ema21S, ema200S, planLines = [];
+const TF_SEC = {'1m':60,'5m':300,'15m':900,'1h':3600,'4h':14400,'1d':86400};
+
+function themeChart(){
+  chart.applyOptions({
+    layout:{background:{color:cssVar('--bg')},textColor:cssVar('--fg2')},
+    grid:{vertLines:{color:cssVar('--grid')},horzLines:{color:cssVar('--grid')}},
+    rightPriceScale:{borderColor:cssVar('--line')},
+    timeScale:{borderColor:cssVar('--line')},
+    crosshair:{
+      vertLine:{color:cssVar('--line2'),labelBackgroundColor:cssVar('--bg3')},
+      horzLine:{color:cssVar('--line2'),labelBackgroundColor:cssVar('--bg3')}},
+  });
+  // Bodies sit a shade darker than borders and wicks, so a dense 1m chart
+  // still reads as individual candles instead of a solid block of colour.
+  candleSeries.applyOptions({
+    upColor:cssVar('--candle-up'), downColor:cssVar('--candle-down'),
+    borderVisible:true,
+    borderUpColor:cssVar('--candle-up-line'),
+    borderDownColor:cssVar('--candle-down-line'),
+    wickUpColor:cssVar('--candle-up-line'),
+    wickDownColor:cssVar('--candle-down-line')});
+  ema9S.applyOptions({color:cssVar('--ema9')});
+  ema21S.applyOptions({color:cssVar('--ema21')});
+  ema200S.applyOptions({color:cssVar('--ema200'),lineWidth:2});
+}
+
+function initChart(){
+  chart = LightweightCharts.createChart($('chart'),
+    {timeScale:{timeVisible:true,secondsVisible:false},
+     rightPriceScale:{autoScale:true},
+     localization:{priceFormatter:p=>p.toLocaleString('en-US',{maximumFractionDigits:2})}});
+  candleSeries = chart.addCandlestickSeries({});
+  ema9S   = chart.addLineSeries({lineWidth:1,priceLineVisible:false,lastValueVisible:false});
+  ema21S  = chart.addLineSeries({lineWidth:1,priceLineVisible:false,lastValueVisible:false});
+  ema200S = chart.addLineSeries({lineWidth:1,priceLineVisible:false,lastValueVisible:false});
+  themeChart();
+
+  const ro = new ResizeObserver(()=>{
+    const w = $('chartWrap').clientWidth, h = $('chartWrap').clientHeight;
+    chart.applyOptions({width:w,height:h});
+    // rightOffset is a bar count, so the pane getting wider or narrower changes
+    // how many bars sit to the right of the live one — recentre on resize
+    if(centerLive) centerLatest();
+    sizeCanvas(); drawZones();
+  });
+  ro.observe($('chartWrap'));
+
+  let t=null, lastBarSpacing=null;
+  chart.timeScale().subscribeVisibleLogicalRangeChange(()=>{
+    clearTimeout(t);
+    t=setTimeout(()=>{
+      applyMarkers(); drawZones(); captureView();
+      // Re-centre after a *zoom* only. rightOffset counts bars, so changing
+      // barSpacing moves the live bar off centre. Panning is left alone —
+      // snapping the user back mid-drag would make the chart unusable — and so
+      // is a jump-to-signal, which deliberately parks elsewhere.
+      const bs = chart.timeScale().options().barSpacing;
+      if(centerLive && lastBarSpacing !== null && bs !== lastBarSpacing
+         && Date.now() > suppressCenterUntil) centerLatest();
+      lastBarSpacing = bs;
+    },120);
+  });
+  chart.subscribeClick(p=>{
+    if(p.time===undefined){ hidePop(); return; }
+    const price = p.point ? candleSeries.coordinateToPrice(p.point.y) : null;
+    const z = price!=null ? zoneAt(price) : null;
+    if(z){ showZoneDetail(z); return; }
+    showBarDetail(p.time, p.point?p.point.x:60);
+  });
+}
+
+function emaCalc(arr,n){ const k=2/(n+1); let e=null;
+  return arr.map(v=>{ e = e===null?v:v*k+e*(1-k); return e; }); }
+
+/* ---------------------------------------------------------- view memory
+   The visible window is stored as a *time* range in raw UTC epochs, not as a
+   bar index or a shifted timestamp. Both symbols run on the same wall clock, so
+   a window means the same thing across a symbol switch, across a timeframe
+   switch, and after a timezone change (which moves the display offset but not
+   the underlying instant). */
+let savedView = null;
+try{ savedView = JSON.parse(localStorage.getItem('chartView')||'null'); }catch(e){}
+let restoringView = false;
+
+function captureView(){
+  if(restoringView || !chart) return;
+  try{
+    const r = chart.timeScale().getVisibleRange();
+    if(!r) return;
+    savedView = { from: r.from - TZ_OFF, to: r.to - TZ_OFF,
+                  barSpacing: chart.timeScale().options().barSpacing };
+    localStorage.setItem('chartView', JSON.stringify(savedView));
+  }catch(e){}
+}
+
+function restoreView(){
+  if(!savedView || !S.candles.length) return false;
+  const first = S.candles[0].time, last = S.candles[S.candles.length-1].time;
+  let from = savedView.from + TZ_OFF, to = savedView.to + TZ_OFF;
+  if(to < first || from > last) return false;      // window not in this data
+  from = Math.max(from, first); to = Math.min(to, last);
+  if(to - from <= 0) return false;
+  restoringView = true;
+  try{
+    if(savedView.barSpacing)
+      chart.timeScale().applyOptions({barSpacing: savedView.barSpacing});
+    chart.timeScale().setVisibleRange({from, to});
+    return true;
+  }catch(e){ return false; }
+  finally{ setTimeout(()=>{ restoringView = false; }, 0); }
+}
+
+/* Centring the live bar means reserving empty space to its right, which the time
+   scale calls rightOffset and measures in bars — so it is half the number of
+   bars that fit across the pane. It is sticky: as new bars print, the newest one
+   stays put in the middle instead of marching to the right edge. */
+// Off by default: re-centring on every zoom fought the user's own panning and
+// was more annoying than useful. Deliberately a new storage key so the previous
+// default (on) does not carry over for anyone who already has it stored.
+let centerLive = localStorage.getItem('centerLive2') === '1';
+// jumping to a signal parks the view somewhere specific; centring must not fight it
+let suppressCenterUntil = 0;
+
+function centerLatest(tries=0){
+  if(!chart) return;
+  const w = $('chartWrap').clientWidth;
+  // Before first layout the pane measures 0, and guessing a width would bake in
+  // a wrong offset. Retry on a timer rather than requestAnimationFrame: rAF does
+  // not fire in a background or non-rendering tab, which left the offset at 0.
+  if(!w){ if(tries < 40) setTimeout(()=>centerLatest(tries+1), 100); return; }
+  const bs = chart.timeScale().options().barSpacing || 6;
+  chart.timeScale().applyOptions({rightOffset: Math.max(1, Math.round((w/bs)/2))});
+}
+
+function applyCenterMode(){
+  localStorage.setItem('centerLive2', centerLive ? '1' : '0');
+  if(centerLive) centerLatest();
+  else { chart.timeScale().applyOptions({rightOffset:0});
+         if(!restoreView()) chart.timeScale().fitContent(); }
+}
+
+/* ---------------------------------------------------------- candle countdown
+   Binance candles align to epoch boundaries — 1m/5m/15m/1h all divide the hour,
+   4h and 1d start at 00:00 UTC, and epoch 0 *is* 00:00 UTC — so the remaining
+   time is just the timeframe minus (now mod timeframe). No server round trip and
+   no dependence on the display timezone, which only shifts labels. */
+function updateCloseTimer(){
+  const el = $('closeTimer'); if(!el) return;
+  const sec = TF_SEC[S.tf];
+  if(!sec){ el.style.display = 'none'; return; }
+  el.style.display = '';
+  const remain = Math.max(0, sec - (Date.now()/1000) % sec);
+  let txt;
+  if(remain >= 3600){
+    txt = `${Math.floor(remain/3600)}h${String(Math.floor(remain%3600/60)).padStart(2,'0')}m`;
+  } else {
+    txt = `${Math.floor(remain/60)}:${String(Math.floor(remain%60)).padStart(2,'0')}`;
+  }
+  el.textContent = `⏱ ${txt}`;
+  el.title = `${txt} until the ${S.tf} candle closes — signals only fire on a close`;
+  // signals are evaluated on the close, so the last stretch is what matters
+  el.style.color = remain <= 10 ? 'var(--down)'
+                 : remain/sec < 0.2 ? 'var(--warn)' : 'var(--fg2)';
+}
+
+function resetView(){
+  savedView = null;
+  localStorage.removeItem('chartView');
+  candleSeries.priceScale().applyOptions({autoScale:true});
+  chart.timeScale().fitContent();
+  if(centerLive) centerLatest();
+}
+
+/* Appending a closed bar with update() leaves the time scale untouched.
+   paintSeries() uses setData, which re-fits the view — fine on a symbol or
+   timeframe change, wrong on every candle. */
+function appendBar(bar){
+  candleSeries.update(bar);
+  const cl = S.candles.map(c=>c.close);
+  [[ema9S,9],[ema21S,21],[ema200S,200]].forEach(([s,n])=>{
+    const a = emaCalc(cl,n);
+    s.update({time:bar.time, value:a[a.length-1]});
+  });
+}
+
+function paintSeries(){
+  const d = S.candles;
+  candleSeries.setData(d);
+  const cl = d.map(x=>x.close);
+  const line = (s,n)=>s.setData(emaCalc(cl,n).map((v,i)=>({time:d[i].time,value:v})));
+  line(ema9S,9); line(ema21S,21); line(ema200S,200);
+}
+
+/* Everything drawn from the previous symbol has to go before new data lands.
+   Price lines take part in the price scale's autoscale, so a leftover BTC stop
+   at 64,568 next to ETH data at 1,914 forces the scale to span both and squashes
+   the candles into a flat line at the bottom of the pane. */
+function clearOverlays(){
+  planLines.forEach(l=>{ try{ candleSeries.removePriceLine(l); }catch(e){} });
+  planLines = [];
+  S.zones = [];
+  if(candleSeries) candleSeries.setMarkers([]);
+  lastMarks = [];
+  drawZones();
+}
+
+/* What the candle series currently *holds*, as "symbol|timeframe".
+   Null while a load is in flight. Live updates are matched against this rather
+   than against S.tf, because S.tf changes the instant the selector does while
+   the series still holds the previous timeframe's bars for as long as the fetch
+   takes — and a tick for a slower timeframe carries an older timestamp than the
+   faster bars already in the series, which makes update() throw. */
+let chartKey = null;
+
+async function loadChart(resetScale=false){
+  chartKey = null;
+  clearOverlays();
+  const want = S.sym + '|' + S.tf;
+  const raw = await api(`candles?symbol=${S.sym}&tf=${S.tf}&limit=400`);
+  if(want !== S.sym + '|' + S.tf) return;   // switched again mid-fetch
+  S.candles = raw.map(d=>({...d,time:shiftT(d.time)}));
+  paintSeries();
+  chartKey = want;
+  if(resetScale){
+    // Only the *price* axis resets. A manual drag of it latches autoScale off
+    // for good, so it is re-armed explicitly rather than assumed — that is what
+    // lets ETH rescale from BTC's range. The time axis is deliberately left
+    // alone and restored below.
+    candleSeries.priceScale().applyOptions({autoScale:true});
+  }
+  // Zoom is remembered in both modes. Position differs: centring pins the live
+  // bar to the middle, otherwise the exact window the user had is restored.
+  if(centerLive){
+    if(savedView?.barSpacing)
+      chart.timeScale().applyOptions({barSpacing: savedView.barSpacing});
+    centerLatest();
+  } else if(!restoreView()){
+    chart.timeScale().fitContent();
+  }
+  updateMarkers(); drawZones();
+}
+
+/* ---------------------------------------------------------- zone overlay
+   lightweight-charts v4 has no rectangle primitive, so zones are painted on a
+   canvas laid over the chart and redrawn whenever the price scale can have
+   moved. Price->pixel conversion comes from the series itself, so the bands
+   stay locked to the axis through pan, zoom and live updates. */
+function sizeCanvas(){
+  const c = $('zoneCanvas'), dpr = window.devicePixelRatio || 1;
+  c.width = $('chartWrap').clientWidth * dpr;
+  c.height = $('chartWrap').clientHeight * dpr;
+  c.style.width = $('chartWrap').clientWidth+'px';
+  c.style.height = $('chartWrap').clientHeight+'px';
+  c.getContext('2d').setTransform(dpr,0,0,dpr,0,0);
+}
+
+const ROLE_COLOR = {support:'--up',resistance:'--down',flip:'--flip',inside:'--info'};
+let ZONE_MODE = localStorage.getItem('zoneMode') || 'all';
+
+/* Canvas 2D has no color-mix(), so alpha blending is done by hand. Theme
+   variables are hex, which is all this needs to handle. */
+function rgba(hex,a){
+  let h = hex.replace('#','');
+  if(h.length===3) h = h.split('').map(c=>c+c).join('');
+  const n = parseInt(h,16);
+  return `rgba(${(n>>16)&255},${(n>>8)&255},${n&255},${a})`;
+}
+
+function visibleZones(){
+  if(ZONE_MODE==='off') return [];
+  return S.zones.filter(z => ZONE_MODE==='major' ? z.tier==='major' : true);
+}
+
+function drawZones(){
+  const cv = $('zoneCanvas'); if(!cv || !candleSeries) return;
+  const ctx = cv.getContext('2d');
+  const W = $('chartWrap').clientWidth, H = $('chartWrap').clientHeight;
+  ctx.clearRect(0,0,W,H);
+  const zs = visibleZones(); if(!zs.length) return;
+  const rightPad = 74;                     // keep clear of the price axis
+  ctx.font = '10.5px ui-sans-serif,system-ui,sans-serif';
+
+  const bg = cssVar('--bg2');
+  const labelRows = [];   // y positions already used, so labels never overlap
+  for(const z of zs){
+    const yHi = candleSeries.priceToCoordinate(z.hi);
+    const yLo = candleSeries.priceToCoordinate(z.lo);
+    if(yHi===null || yLo===null) continue;
+    const top = Math.min(yHi,yLo), h = Math.max(Math.abs(yLo-yHi),2);
+    if(top>H || top+h<0) continue;
+    const col = cssVar(ROLE_COLOR[z.role]||'--fg3');
+    const stale = !!z.invalidated_by;
+    // A band several ATR tall is a higher-timeframe range. Filling it solid
+    // would tint half the chart and hide the candles, so those get edges only.
+    const wide = z.width_atr > 4;
+    // opacity carries strength, so a major level reads heavier than a minor one
+    // nudged up from the previous values because the palette desaturation
+    // made the same alphas read as almost nothing
+    const alpha = stale ? 0.04 + 0.05*z.strength
+                : wide ? 0.03 + 0.05*z.strength
+                       : 0.08 + 0.24*z.strength;
+
+    ctx.fillStyle = rgba(col,alpha);
+    ctx.fillRect(0,top,W-rightPad,h);
+
+    ctx.strokeStyle = rgba(col, stale?0.32:wide?0.45:0.75);
+    ctx.lineWidth = z.tier==='major' ? 1.4 : 1;
+    ctx.setLineDash(stale ? [2,4] : z.tier==='major' ? [] : [5,4]);
+    ctx.beginPath();
+    ctx.moveTo(0,top+.5); ctx.lineTo(W-rightPad,top+.5);
+    ctx.moveTo(0,top+h-.5); ctx.lineTo(W-rightPad,top+h-.5);
+    ctx.stroke(); ctx.setLineDash([]);
+
+    let label = `${z.tier} ${z.role} · ${z.tfs.join('/')} · ${z.strength.toFixed(2)}`;
+    if(wide) label += ` · ${z.width_atr}×ATR range`;
+    if(stale) label += ' · invalidated';
+    const tw = ctx.measureText(label).width;
+    const lx = Math.max(4, W-rightPad-tw-8);
+
+    // seat the label inside the band, nudging down until it clears earlier ones
+    let ly = Math.min(Math.max(top+9, 10), top+h-3);
+    const limit = top + Math.max(h,14) + 4;
+    while(labelRows.some(y=>Math.abs(y-ly)<14) && ly < limit) ly += 14;
+    if(labelRows.some(y=>Math.abs(y-ly)<14)) continue;   // no room — skip label
+    labelRows.push(ly);
+
+    ctx.fillStyle = rgba(bg,0.88);
+    ctx.fillRect(lx-4,ly-9,tw+8,14);
+    ctx.fillStyle = rgba(col, stale?0.6:1);
+    ctx.fillText(label,lx,ly+1.5);
+  }
+}
+
+function zoneAt(price){
+  const hits = visibleZones().filter(z=>price>=z.lo && price<=z.hi);
+  if(!hits.length) return null;
+  return hits.reduce((a,b)=>b.strength>a.strength?b:a);
+}
+
+function drawPlanLines(){
+  planLines.forEach(l=>{ try{candleSeries.removePriceLine(l);}catch(e){} });
+  planLines = [];
+  // never draw levels belonging to a different symbol or timeframe
+  if(S.analysis && (S.analysis.symbol !== S.sym || S.analysis.tf !== S.tf)) return;
+  const p = S.analysis?.plan; if(!p || !p.entry) return;
+  const add = (price,color,title,style)=>{
+    if(price==null) return;
+    planLines.push(candleSeries.createPriceLine({price,color,lineWidth:1,
+      lineStyle:style,axisLabelVisible:true,title}));
+  };
+  const DASH = LightweightCharts.LineStyle.Dashed, DOT = LightweightCharts.LineStyle.Dotted;
+  add(p.entry, cssVar('--accent'), 'entry', DASH);
+  add(p.stop,  cssVar('--down'),   'stop',  DASH);
+  (p.targets||[]).forEach((t,i)=>add(t.price, cssVar('--up'), t.label.split(' ')[0], DOT));
+}
+
+/* ---------------------------------------------------------- markers */
+let MK = localStorage.getItem('markers') || 'all', lastMarks = [];
+const bucket = ts => { const s = TF_SEC[S.tf]||300; return shiftT(Math.floor(ts/s)*s); };
+const ABBR = { orb:'ORB', vwap_fade:'VWF', ema_pullback:'EMA', rsi2_extreme:'RSI',
+  funding_extreme:'FND', liquidation_cascade:'LIQ', volume_spike:'VOL',
+  session_open_volatility:'SES', structure_break:'BOS', fvg:'FVG', order_block:'OB',
+  sr_reaction:'S/R', trend_continuation:'TRD', mean_reversion:'MR',
+  ema_cross_pullback:'X-EMA', vwap_bounce:'VWB', liquidity_grab:'GRAB',
+  rsi_sr_confluence:'RSI+SR', breakout_retest:'RETEST', bb_squeeze:'SQZ' };
+
+function updateMarkers(){
+  if(!candleSeries) return;
+  if(MK==='off'){ candleSeries.setMarkers([]); lastMarks=[]; return; }
+  const raw = [];
+  if(MK==='all') for(const f of S.feed){
+    if(f.symbol!==S.sym||f.tf!==S.tf) continue;
+    const d = f.confluence.direction;
+    raw.push({kind:'signal',time:bucket(f.ts),
+      position:d==='short'?'aboveBar':'belowBar',
+      shape:d==='short'?'arrowDown':d==='long'?'arrowUp':'circle',
+      score:f.confluence.score, color:scoreColorRaw(f.confluence.score),
+      labels:f.events.map(e=>ABBR[e.setup]||e.setup.slice(0,3).toUpperCase())});
+  }
+  for(const a of S.alerts){
+    if(a.symbol!==S.sym||a.tf!==S.tf) continue;
+    raw.push({kind:'alert',time:bucket(a.ts),position:'aboveBar',shape:'circle',
+      score:a.score||0, color:a.priority==='high'?cssVar('--down'):cssVar('--info'),
+      labels:['🔔']});
+  }
+  const groups = new Map();
+  for(const m of raw){
+    const k = m.time+'|'+m.position;
+    if(!groups.has(k)) groups.set(k,[]);
+    groups.get(k).push(m);
+  }
+  const marks = [];
+  for(const items of groups.values()){
+    const alert = items.find(m=>m.kind==='alert');
+    const best = items.reduce((a,b)=>b.score>a.score?b:a);
+    const labels = [...new Set(items.flatMap(m=>m.labels))];
+    marks.push({time:items[0].time,position:items[0].position,
+      shape: alert?'circle':best.shape, color: alert?alert.color:best.color,
+      textFull: labels.length>3 ? labels.slice(0,3).join('·')+` +${labels.length-3}`
+                                : labels.join('·'),
+      textShort: labels[0] + (labels.length>1?`+${labels.length-1}`:'')});
+  }
+  marks.sort((a,b)=>a.time-b.time);
+  lastMarks = marks.slice(-200);
+  applyMarkers();
+}
+const scoreColorRaw = s => s>=60?cssVar('--up'):s>=35?cssVar('--warn'):cssVar('--fg3');
+
+function applyMarkers(){
+  if(!candleSeries) return;
+  let px = 100;
+  try{ const lr = chart.timeScale().getVisibleLogicalRange();
+    if(lr) px = $('chartWrap').clientWidth / Math.max(lr.to-lr.from,1); }catch(e){}
+  candleSeries.setMarkers(lastMarks.map(m=>({time:m.time,position:m.position,
+    shape:m.shape,color:m.color,
+    text: px>=55 ? m.textFull : px>=28 ? m.textShort : ''})));
+}
+
+/* ---------------------------------------------------------- popups */
+const hidePop = () => $('pop').style.display='none';
+function showPop(html,x){
+  const p = $('pop'); p.innerHTML = html; p.style.display='block';
+  p.style.left = Math.max(8, Math.min(x, $('chartWrap').clientWidth-460))+'px';
+  p.style.top = '34px';
+}
+function showZoneIdx(i){ const z = S.zones[i]; if(z) showZoneDetail(z); }
+function showZoneDetail(z){
+  showPop(`
+    <div class="row" style="margin-bottom:8px">
+      <b>${esc(z.tier)} ${esc(z.role)} zone</b>
+      <span class="chip">${z.tfs.join(' / ')}</span><div class="sp"></div>
+      <button class="ghost tiny" onclick="hidePop()">✕</button>
+    </div>
+    <div class="mono sm" style="margin-bottom:8px">${num(z.lo)} — ${num(z.hi)}
+      <span class="dim">(${num(z.width)} wide, ${z.width_atr}× ATR)</span></div>
+    <table class="t">
+      <tr><td class="dim">strength</td><td class="mono">${z.strength.toFixed(2)}</td>
+          <td class="dim">relevance</td><td class="mono">${z.relevance.toFixed(2)}</td></tr>
+      <tr><td class="dim" title="Distinct times price entered this band. Consecutive bars inside count as one visit.">visits</td>
+          <td class="mono">${z.visits}</td>
+          <td class="dim" title="held / (held + gave way)">hold rate</td>
+          <td class="mono">${(z.hold_rate*100).toFixed(0)}%</td></tr>
+      <tr><td class="dim" title="Visits that ended with price leaving the way this level is supposed to defend — up for support, down for resistance.">held</td>
+          <td class="mono up">${z.rejections}</td>
+          <td class="dim" title="Visits that ended with price exiting the far side — straight through the level.">gave way</td>
+          <td class="mono down">${z.penetrations}</td></tr>
+      <tr><td class="dim" title="Times a close went past the level and a later close came back — poked through, then recovered.">reclaimed</td>
+          <td class="mono">${z.defended}</td>
+          <td class="dim">distance</td><td class="mono">${z.distance_pct>0?'+':''}${z.distance_pct}% (${z.distance_atr}× ATR)</td></tr>
+      <tr><td class="dim">unresolved</td>
+          <td class="mono">${Math.max(0, z.visits - z.rejections - z.penetrations)}</td>
+          <td class="dim" title="Touch counts are measured on a single timeframe so they stay internally consistent.">counts from</td>
+          <td class="mono">${esc(z.counts_from||z.tf)}</td></tr>
+      <tr><td class="dim">last touch</td><td class="mono" colspan="3">${z.bars_since_touch} bars ago</td></tr>
+      <tr><td class="dim">broken</td><td class="mono" colspan="3">${z.broken?'yes — now a flip level ('+esc(z.broken_dir)+')':'no'}</td></tr>
+      ${z.invalidated_by?`<tr class="bad"><td class="dim">invalidated</td>
+        <td class="mono" colspan="3">${esc(z.invalidated_by)}</td></tr>`:''}
+    </table>
+    <div class="sm muted" style="margin-top:8px">
+      Built from ${z.pivots} confirmed pivot${z.pivots===1?'':'s'} on ${z.tfs.join('/')},
+      born ${esc((z.born_ts||'').slice(0,16).replace('T',' '))} UTC.
+      <a href="#" onclick="showDoc('zones');return false">How zones work →</a>
+    </div>`, $('chartWrap').clientWidth/2);
+}
+function showBarDetail(barTime,x){
+  const sigs = S.feed.filter(f=>f.symbol===S.sym&&f.tf===S.tf&&bucket(f.ts)===barTime);
+  const als  = S.alerts.filter(a=>a.symbol===S.sym&&a.tf===S.tf&&bucket(a.ts)===barTime);
+  if(!sigs.length && !als.length){ hidePop(); return; }
+  showPop(`
+    <div class="row" style="margin-bottom:8px">
+      <b>${esc(S.sym)} ${esc(S.tf)}</b>
+      <span class="dim xs">${fmtT(barTime-TZ_OFF)}</span><div class="sp"></div>
+      <button class="ghost tiny" onclick="hidePop()">✕</button>
+    </div>
+    ${als.map(a=>`<div style="border-bottom:1px solid var(--line);padding-bottom:7px;margin-bottom:7px">
+      <div class="row wrap"><b>🔔 ${esc(a.rule_name)}</b>
+        ${a.priority==='high'?'<span class="chip bad">high</span>':''}
+        <div class="sp"></div>
+        <b class="mono" style="color:${scoreColor(a.score)}">${a.score}/100</b></div>
+      <div class="sm muted" style="margin-top:4px">${esc(a.message)}</div></div>`).join('')}
+    ${sigs.map(f=>`<div style="padding-bottom:7px">
+      <div class="row wrap">${f.events.map(e=>`<span class="chip click"
+        onclick="showSetup('${e.setup}')">${esc(e.setup.replace(/_/g,' '))}
+        ${e.direction==='long'?'▲':e.direction==='short'?'▼':'•'}</span>`).join('')}
+        <div class="sp"></div>
+        <b class="mono" style="color:${scoreColor(f.confluence.score)}">${f.confluence.score}/100</b></div>
+      <div class="sm muted" style="margin-top:4px">${esc(f.explanation)}</div></div>`).join('')}
+  `, x);
+}
+function jumpTo(item){
+  const go = ()=>{
+    const t = bucket(item.ts), sec = TF_SEC[S.tf]||300;
+    suppressCenterUntil = Date.now() + 4000;   // let the jump stick
+    chart.timeScale().setVisibleRange({from:t-50*sec,to:t+15*sec});
+    setTimeout(()=>showBarDetail(t,$('chartWrap').clientWidth/2),200);
+  };
+  if(item.symbol!==S.sym||item.tf!==S.tf){
+    S.sym=item.symbol; S.tf=item.tf;
+    $('symSel').value=S.sym; $('tfSel').value=S.tf;
+    renderSide(); refreshSymbol().then(()=>setTimeout(go,100));
+  } else go();
+}
+const jumpFeed  = i => jumpTo(S.feed[i]);
+const jumpAlert = i => jumpTo(S.alerts[i]);
+
+/* ================================================================ analysis */
+async function refreshAnalysis(){
+  const want = S.sym + '|' + S.tf;
+  const a = await api(`analysis?symbol=${S.sym}&tf=${S.tf}`);
+  // a fast symbol switch can land the previous symbol's response last; applying
+  // it would paint 64k levels onto a 1.9k chart
+  if(want !== S.sym + '|' + S.tf) return;
+  if(!a || !a.score) { S.analysis=null; if(S.tab==='analysis') render(); return; }
+  S.analysis = a;
+  S.zones = a.zones?.zones || [];
+  drawZones(); drawPlanLines();
+  if(S.tab==='analysis') render();
+}
+async function refreshSymbol(){
+  // drop the previous symbol's analysis first: its plan levels and zones are in
+  // a completely different price range and must not survive the switch
+  S.analysis = null; S.zones = [];
+  await loadChart(true);
+  await refreshAnalysis();
+  refreshTiming();
+}
+
+function meter(label,value,color){
+  return `<div style="margin-bottom:6px">
+    <div class="row xs" style="margin-bottom:3px">
+      <span class="dim">${label}</span><div class="sp"></div>
+      <b class="mono" style="color:${color}">${value}</b></div>
+    <div class="meter"><i style="width:${value}%;background:${color}"></i></div></div>`;
+}
+
+function compBar(v){
+  const w = Math.abs(v)*50, col = v>0.08?'var(--up)':v<-0.08?'var(--down)':'var(--fg3)';
+  const left = v>=0 ? 50 : 50-w;
+  return `<span class="bar"><i style="left:${left}%;width:${w}%;background:${col}"></i></span>`;
+}
+
+/* The gate's job is to say no most of the time, so it has to show its working —
+   otherwise a suppressed signal is indistinguishable from no signal. */
+function renderGateStrip(a){
+  const blocks = a.gate_blocks||[];
+  if(!a.gate) return '';
+  if(!blocks.length) return `<div class="gatebar pass">
+    <b class="up">✓ gate passed</b>
+    <span class="sm muted">every threshold cleared — this is a ${esc(a.action)} under
+      your current settings</span>
+    <div class="sp"></div>
+    <button class="ghost tiny" onclick="S.tab='settings';render()">edit gate</button>
+  </div>`;
+  return `<div class="gatebar block">
+    <b class="warn">⛔ blocked by your gate</b>
+    <span class="sm">leans <b>${esc(a.wanted_action)}</b>, held at wait:</span>
+    ${blocks.map(b=>`<span class="chip bad">${esc(b.gate)} ${esc(b.got)}
+      <span class="dim">need ${esc(b.need)}</span></span>`).join('')}
+    <div class="sp"></div>
+    <button class="ghost tiny" onclick="S.tab='settings';render()">edit gate</button>
+  </div>`;
+}
+
+function renderAnalysis(){
+  const a = S.analysis;
+  if(!a) return `<div class="muted sm">Building the first analysis for
+    ${esc(S.sym)} ${esc(S.tf)} — it appears on the next closed candle.</div>`;
+  const c = a.action==='buy'?'var(--up)':a.action==='sell'?'var(--down)':'var(--fg2)';
+  const p = a.plan||{}, lev = a.leverage||{};
+  const docs = S.docs?.components || {};
+
+  return `<div class="stack-lg" style="max-width:1000px">
+
+  <div class="card pad-lg">
+    <div class="scorewrap">
+      <div style="text-align:center">
+        <div class="bignum" style="color:${c}">${a.score}</div>
+        <div class="dim xs" style="margin-top:2px">out of 100</div>
+        <div class="action ${a.action}" style="margin-top:8px">${a.action.toUpperCase()}</div>
+      </div>
+      <div>
+        <div class="row wrap" style="margin-bottom:10px">
+          <b>${esc(S.sym)}</b><span class="chip">${esc(S.tf)}</span>
+          <span class="chip">${esc(a.conviction)} conviction</span>
+          <span class="chip">${esc(a.regime)} volatility</span>
+          <span class="chip">${Math.round(a.agreement*100)}% of signals agree</span>
+          <div class="sp"></div>
+          <button class="ghost tiny" onclick="showDoc('score')">how is this scored?</button>
+        </div>
+        ${meter('buy score',a.buy_score,'var(--up)')}
+        ${meter('sell score',a.sell_score,'var(--down)')}
+        <div class="sm" style="margin-top:10px">${esc(a.advice.headline)}</div>
+      </div>
+    </div>
+    ${renderGateStrip(a)}
+  </div>
+
+  <div class="card pad-lg">
+    <div class="row"><b>Advice</b><div class="sp"></div>
+      <span class="dim xs">bar closed ${esc((a.bar_ts||'').slice(11,16))} UTC</span></div>
+    <h4 class="h">What to do</h4>
+    <ul class="list">${(a.advice.execution||[]).map(x=>`<li>${esc(x)}</li>`).join('')}</ul>
+    <h4 class="h up">Supporting the ${a.action==='sell'?'short':'long'} case</h4>
+    <ul class="list">${(a.advice.supporting||[]).map(x=>`<li>${esc(x)}</li>`).join('')
+      || '<li class="dim">nothing meaningful lines up</li>'}</ul>
+    <h4 class="h down">Against it / risks</h4>
+    <ul class="list">${(a.advice.risks||[]).map(x=>`<li>${esc(x)}</li>`).join('')}</ul>
+  </div>
+
+  ${p.entry?`<div class="card pad-lg">
+    <div class="row"><b>Trade plan</b><div class="sp"></div>
+      <span class="chip">${esc(p.entry_type||'')}</span></div>
+    <table class="t" style="margin-top:8px">
+      <tr><th>entry</th><th>stop</th><th>risk</th><th>T1</th><th>T2</th><th>R:R</th></tr>
+      <tr class="mono">
+        <td>${num(p.entry)}</td>
+        <td class="down">${num(p.stop)}</td>
+        <td>${p.risk_pct}%</td>
+        <td class="up">${num(p.targets?.[0]?.price)}</td>
+        <td class="up">${num(p.targets?.[1]?.price)}</td>
+        <td>${p.rr??'—'}:1</td></tr>
+    </table>
+    <div class="sm muted" style="margin-top:8px">
+      Stop derived from ${esc(p.stop_source||'ATR')}.
+      Invalidated by ${esc(p.invalidation||'')}
+    </div>
+  </div>`:''}
+
+  ${lev.rows?`<div class="card pad-lg">
+    <div class="row"><b>Position &amp; leverage</b><div class="sp"></div>
+      <span class="chip">${lev.quantity} ${esc(S.sym.replace('USDT',''))}</span>
+      <span class="chip">${num(lev.notional)} USD notional</span></div>
+    <table class="t" style="margin-top:8px">
+      <tr><th>leverage</th><th>margin</th><th>liq. move</th><th>liq. price (long)</th>
+          <th>liq. price (short)</th><th>in ATR</th><th>vs this stop</th></tr>
+      ${lev.rows.map(r=>`<tr class="${r.stop_fits===false?'bad':''}">
+        <td class="mono">${r.leverage}×</td>
+        <td class="mono">${num(r.margin)}</td>
+        <td class="mono">${r.liq_move_pct}%</td>
+        <td class="mono">${num(r.liq_price_long)}</td>
+        <td class="mono">${num(r.liq_price_short)}</td>
+        <td class="mono">${r.liq_in_atr??'—'}</td>
+        <td class="sm ${r.stop_fits===false?'down':''}">${esc(r.verdict||'no stop set')}</td>
+      </tr>`).join('')}
+    </table>
+    ${lev.note?`<div class="sm" style="margin-top:8px;color:var(--warn)">${esc(lev.note)}</div>`:''}
+    <div class="sm dim" style="margin-top:6px">
+      Liquidation distance is approximated as 1/leverage of price — the point where the
+      loss equals posted margin. Spread, commission and swap make the real stop-out
+      trigger slightly earlier, so treat these as the optimistic bound.
+    </div>
+  </div>`:''}
+
+  <div class="card pad-lg">
+    <div class="row"><b>Score breakdown</b><div class="sp"></div>
+      <span class="dim xs">click any row for what it measures</span></div>
+    <div class="stack" style="margin-top:8px">
+    ${a.components.map(k=>{
+      const d = docs[k.key]||{};
+      return `<details class="comp">
+        <summary>
+          <b style="width:130px;display:inline-block">${esc(d.title||k.key.replace(/_/g,' '))}</b>
+          ${compBar(k.value)}
+          <span class="mono sm" style="width:52px;color:${k.value>0.08?'var(--up)':k.value<-0.08?'var(--down)':'var(--fg3)'}">
+            ${k.value>0?'+':''}${k.value.toFixed(2)}</span>
+          <span class="chip">weight ${k.weight}</span>
+          <span class="sm muted grow" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">
+            ${esc(k.detail)}</span>
+        </summary>
+        <div class="doc">
+          <div style="margin-bottom:8px">${esc(k.detail)}</div>
+          <dl class="dl">
+            <dt>What it measures</dt><dd>${esc(d.what||'')}</dd>
+            <dt>Why it matters</dt><dd>${esc(d.why||'')}</dd>
+            <dt>How to read it</dt><dd>${esc(d.read||'')}</dd>
+          </dl>
+          ${k.extra?.events?.length?`<div style="margin-top:8px">
+            ${k.extra.events.map(e=>`<span class="chip click"
+              onclick="showSetup('${e.setup}')">${esc(e.setup.replace(/_/g,' '))} →</span>`).join(' ')}
+          </div>`:''}
+        </div></details>`;
+    }).join('')}
+    </div>
+    <div class="sm dim" style="margin-top:10px">
+      Volatility is not a directional vote — it scales the final score.
+      ${esc(a.volatility?.detail||'')}
+    </div>
+  </div>
+
+  <div class="card pad-lg">
+    <div class="row"><b>Zones on the chart</b><div class="sp"></div>
+      <button class="ghost tiny" onclick="showDoc('zones')">how they adjust</button></div>
+    <table class="t" style="margin-top:8px">
+      <tr><th>band</th><th>role</th><th>tier</th><th>timeframes</th><th>strength</th>
+          <th>hold</th><th>distance</th><th>state</th></tr>
+      ${(S.zones||[]).map((z,i)=>[z,i]).reverse().map(([z,i])=>`
+      <tr class="click ${z.invalidated_by?'bad':''}" onclick="showZoneIdx(${i})">
+        <td class="mono">${num(z.lo)}–${num(z.hi)}</td>
+        <td class="${z.role==='support'?'up':z.role==='resistance'?'down':z.role==='flip'?'flip':'info'}">${esc(z.role)}</td>
+        <td>${esc(z.tier)}</td><td class="mono sm">${z.tfs.join('/')}</td>
+        <td class="mono">${z.strength.toFixed(2)}</td>
+        <td class="mono">${(z.hold_rate*100).toFixed(0)}%</td>
+        <td class="mono">${z.distance_pct>0?'+':''}${z.distance_pct}%</td>
+        <td class="sm dim">${z.invalidated_by?esc(z.invalidated_by):z.broken?'flipped':'active'}</td>
+      </tr>`).join('')}
+    </table>
+    <div class="sm dim" style="margin-top:6px">
+      Sourced from ${(a.zones?.sourced_from||[]).join(', ')} — the viewed timeframe and
+      every one above it. Rebuilt on every closed candle.
+    </div>
+  </div>
+
+  <div class="sm dim">${esc(a.disclaimer)}</div>
+  </div>`;
+}
+
+/* ================================================================ timing
+   Session quality: is this hour worth trading at all. Kept separate from the
+   directional score because a perfect setup in a dead book is still a bad
+   trade — the spread and the wick hunting eat it. */
+async function refreshTiming(){
+  try{ S.timing = await api(`timing?symbol=${S.sym}`); }catch(e){ S.timing=null; }
+  updateTimingChip();
+  if(S.tab==='timing') render();
+}
+function updateTimingChip(){
+  const btn = document.querySelector('#tabs button[data-tab="timing"]');
+  if(!btn) return;
+  // the per-bar analysis payload carries a small timing summary, so the chip
+  // stays live without refetching the whole 24-hour profile every candle
+  const t = S.timingChip || S.timing;
+  if(!t || !t.available){ btn.innerHTML = `Timing <span class="chip xs">…</span>`; return; }
+  btn.innerHTML = `Timing <span class="chip xs" style="color:${tierColor(t.tier)};
+    border-color:color-mix(in srgb,${tierColor(t.tier)} 45%,transparent)"
+    >${t.score} ${esc(t.tier)}</span>`;
+}
+function hourCell(h, isNow){
+  if(!h) return `<div class="hcell dim">–</div>`;
+  const col = tierColor(h.tier);
+  return `<div class="hcell ${isNow?'now':''}" title="${h.ist_hour}:00 IST · ${esc(h.utc_span)}
+ · ${esc(h.session)} · ${h.median_trades.toLocaleString()} trades · range ${h.median_range_pct}%
+ · efficiency ${h.median_efficiency}" onclick="showHour(${h.ist_hour})">
+    <div class="hbar"><i style="height:${Math.max(4,h.score)}%;background:${col}"></i></div>
+    <div class="hnum mono" style="color:${col}">${h.score}</div>
+    <div class="hlab dim">${String(h.ist_hour).padStart(2,'0')}</div>
+  </div>`;
+}
+function renderTiming(){
+  const t = S.timing;
+  if(!t) return `<div class="muted sm">Loading session profile…</div>`;
+  if(!t.available){
+    if(t.pending) setTimeout(refreshTiming, 4000);   // poll until the build lands
+    return `<div class="muted sm">${t.pending?'⏳ ':''}${esc(t.reason||'unavailable')}.
+      ${t.pending?'This panel refreshes itself when it is ready.':''}</div>`;
+  }
+  const col = tierColor(t.tier);
+  const hours = t.hours;
+  const nowH = parseInt(t.now_ist.slice(0,2),10);
+  const other = t.day_type==='weekday' ? t.weekend_hours : t.weekday_hours;
+  const otherLabel = t.day_type==='weekday' ? 'weekend' : 'weekday';
+
+  return `<div class="stack-lg" style="max-width:1000px">
+
+  <div class="card pad-lg">
+    <div class="scorewrap">
+      <div style="text-align:center">
+        <div class="bignum" style="color:${col}">${t.score}</div>
+        <div class="dim xs" style="margin-top:2px">out of 100</div>
+        <div class="action" style="margin-top:8px;background:color-mix(in srgb,${col} 20%,transparent);color:${col}">
+          ${esc(t.tier.toUpperCase())}</div>
+      </div>
+      <div>
+        <div class="row wrap" style="margin-bottom:8px">
+          <b>${esc(S.sym)}</b>
+          <span class="chip">${esc(t.now_ist)} IST</span>
+          <span class="chip">${esc(t.now_utc)} UTC</span>
+          <span class="chip">${esc(t.session)}</span>
+          <span class="chip">${esc(t.day_type)}</span>
+          <div class="sp"></div>
+          <button class="ghost tiny" onclick="showDoc('timing')">how is this scored?</button>
+        </div>
+        <div class="sm" style="margin-bottom:8px">${esc(t.advice.headline)}</div>
+        <ul class="list">${t.advice.points.map(p=>`<li>${esc(p)}</li>`).join('')}</ul>
+      </div>
+    </div>
+    ${t.adjustments?.length?`<div class="sm dim" style="margin-top:10px">
+      Base score for this hour was ${t.base_score}; adjusted by
+      ${t.adjustments.map(a=>`${esc(a.reason)} ${a.delta>0?'+':''}${a.delta}`).join(', ')}.
+    </div>`:''}
+  </div>
+
+  <div class="card pad-lg">
+    <div class="row wrap"><b>Best times to trade — IST</b>
+      <span class="chip">${esc(t.day_type)} profile</span>
+      <div class="sp"></div>
+      <span class="dim xs">click an hour for its numbers</span></div>
+    <div class="hmap">${hours.map((h,i)=>hourCell(h,i===nowH)).join('')}</div>
+    <div class="row wrap sm dim" style="margin-top:8px;gap:14px">
+      ${['prime','good','fair','poor','avoid'].map(k=>
+        `<span><i class="swatch" style="background:${tierColor(k)}"></i> ${k}</span>`).join('')}
+      <span><i class="swatch" style="background:transparent;border:2px solid var(--accent)"></i> now</span>
+    </div>
+  </div>
+
+  <div class="card pad-lg">
+    <div class="row"><b>Windows</b></div>
+    <table class="t" style="margin-top:8px">
+      <tr><th>quality</th><th>IST window</th><th>hours</th><th>avg score</th><th>sessions</th></tr>
+      ${(t.best_windows||[]).map(w=>`<tr>
+        <td class="up">worth trading</td>
+        <td class="mono">${esc(w.from_ist)} – ${esc(w.to_ist)}</td>
+        <td class="mono">${w.hours}</td><td class="mono">${w.avg_score}</td>
+        <td class="sm">${w.sessions.map(esc).join(', ')}</td></tr>`).join('')}
+      ${(t.worst_windows||[]).map(w=>`<tr>
+        <td class="down">avoid</td>
+        <td class="mono">${esc(w.from_ist)} – ${esc(w.to_ist)}</td>
+        <td class="mono">${w.hours}</td><td class="mono">${w.avg_score}</td>
+        <td class="sm">${w.sessions.map(esc).join(', ')}</td></tr>`).join('')}
+    </table>
+    ${t.next_prime?`<div class="sm" style="margin-top:8px">
+      Next hour after this one scoring 'good' or better: <b>${esc(t.next_prime.at_ist)} IST</b>
+      (${t.next_prime.in_minutes} min away, ${esc(t.next_prime.session)},
+      scores ${t.next_prime.score}).</div>`:''}
+    <div class="sm dim" style="margin-top:6px">
+      Weekend scores average ${t.weekend_penalty} points versus weekday —
+      measured from this symbol's own history, not assumed.
+    </div>
+  </div>
+
+  <div class="card pad-lg">
+    <div class="row"><b>This hour's components</b></div>
+    <table class="t" style="margin-top:8px">
+      <tr><th>component</th><th>weight</th><th>score</th><th>what it measured</th></tr>
+      ${[['liquidity',32,`${t.current_hour.median_trades.toLocaleString()} trades in a typical hour`],
+         ['range',24,`${t.current_hour.median_range_pct}% range = ${t.current_hour.cost_multiple}x round-trip cost`],
+         ['efficiency',22,`${t.current_hour.median_efficiency} of the bar's range is directional body`],
+         ['integrity',22,`${(t.current_hour.median_wick_share*100).toFixed(0)}% of the range is wick`]]
+        .map(([k,w,d])=>{const v=t.current_hour.parts[k];
+        return `<tr><td>${k}</td><td class="mono">${w}%</td>
+          <td class="mono" style="color:${v>=0.6?'var(--up)':v>=0.4?'var(--warn)':'var(--down)'}">${(v*100).toFixed(0)}</td>
+          <td class="sm muted">${esc(d)}</td></tr>`;}).join('')}
+    </table>
+    ${t.pace?`<div class="sm" style="margin-top:8px">
+      Live pace: ${t.pace.so_far} traded in ${t.pace.elapsed_min} min, projecting
+      ${t.pace.projected} for the hour against a normal ${t.pace.expected} —
+      <b style="color:${t.pace.ratio<0.8?'var(--down)':t.pace.ratio>1.3?'var(--up)':'var(--fg)'}">
+      ${(t.pace.ratio*100).toFixed(0)}% of normal</b>.</div>`:''}
+  </div>
+
+  <div class="card pad-lg">
+    <div class="row"><b>${otherLabel} profile for comparison</b></div>
+    <div class="hmap" style="margin-top:8px">${(other||[]).map(h=>hourCell(h,false)).join('')}</div>
+  </div>
+
+  <div class="sm dim">
+    Profile from ${t.profile_meta.bars} hourly bars over ${t.profile_meta.days} days
+    (${esc((t.profile_meta.from||'').slice(0,10))} → ${esc((t.profile_meta.to||'').slice(0,10))}),
+    rebuilt every 6 hours. Describes liquidity and orderliness, not direction.
+  </div>
+  </div>`;
+}
+function showHour(h){
+  const t = S.timing; if(!t) return;
+  const e = t.hours[h] || t.weekday_hours[h]; if(!e) return;
+  $('detailTitle').textContent = `${String(h).padStart(2,'0')}:00 IST — ${e.tier} (${e.score}/100)`;
+  $('detailBody').innerHTML = `
+    <div class="row wrap" style="margin-bottom:12px">
+      <span class="chip">${esc(e.utc_span)}</span>
+      <span class="chip">${esc(e.session)}</span>
+      <span class="chip">${e.samples} samples</span>
+    </div>
+    <table class="t">
+      <tr><th>metric</th><th>median for this hour</th></tr>
+      <tr><td>trades</td><td class="mono">${e.median_trades.toLocaleString()}</td></tr>
+      <tr><td>USD volume</td><td class="mono">${(e.median_usd_volume/1e6).toFixed(1)}M</td></tr>
+      <tr><td>range</td><td class="mono">${e.median_range_pct}% (${e.cost_multiple}x round-trip cost)</td></tr>
+      <tr><td>efficiency</td><td class="mono">${e.median_efficiency}</td></tr>
+      <tr><td>wick share</td><td class="mono">${(e.median_wick_share*100).toFixed(0)}%</td></tr>
+    </table>
+    <h4 class="h">Component scores</h4>
+    <table class="t">
+      ${Object.entries(e.parts).map(([k,v])=>`<tr><td>${k}</td>
+        <td class="mono" style="color:${v>=0.6?'var(--up)':v>=0.4?'var(--warn)':'var(--down)'}">
+        ${(v*100).toFixed(0)}</td></tr>`).join('')}
+    </table>
+    <div class="sm dim" style="margin-top:10px">
+      <a href="#" onclick="showDoc('timing');return false">How these are combined →</a>
+    </div>`;
+  openModal('detailModal');
+}
+
+/* ================================================================ detail modals */
+function openModal(id){ $(id).classList.remove('hide'); }
+function closeModal(id){ $(id).classList.add('hide'); }
+window.addEventListener('keydown',e=>{ if(e.key==='Escape'){
+  closeModal('helpModal'); closeModal('detailModal'); hidePop(); } });
+
+function showSetup(name){
+  const d = S.docs?.setups?.[name];
+  $('detailTitle').textContent = d?.title || name.replace(/_/g,' ');
+  $('detailBody').innerHTML = d ? `
+    <div class="sm muted" style="margin-bottom:12px">${esc(d.short)}</div>
+    <dl class="dl">
+      <dt>Trigger condition</dt><dd>${esc(d.what)}</dd>
+      <dt>Why people trade it</dt><dd>${esc(d.why)}</dd>
+      <dt>Typical execution</dt><dd>${esc(d.how)}</dd>
+      <dt class="down">Known failure mode</dt><dd>${esc(d.fails)}</dd>
+      <dt>Timeframes</dt><dd>${esc(d.tf)}</dd>
+    </dl>
+    <hr class="sep">
+    <div class="row wrap">
+      <span class="dim sm">detector key</span><span class="chip mono">${esc(name)}</span>
+      <span class="dim sm">category</span><span class="chip">${esc(catOfSetup(name))}</span>
+      <span class="dim sm">confluence weight</span>
+      <span class="chip mono">${S.docs?.weights?.[name] ?? '—'}</span>
+    </div>`
+    : `<div class="muted">No description registered for <code>${esc(name)}</code>.</div>`;
+  openModal('detailModal');
+}
+const DOC_LABELS = {
+  what:'What it is', why:'Why', dynamic:'What makes it dynamic',
+  mtf:'Multi-timeframe adjustment', tiers:'Tiers', roles:'Roles',
+  buysell:'Buy vs sell score', action:'When it says buy or sell',
+  honest:'The honest part', components:'The four components',
+  why_not_volume:'Why not just volume', manipulation:'Manipulation / thin-book risk',
+  live:'Live adjustments', weekend:'Weekends',
+  how_chosen:'How the defaults were chosen', no_lookahead:'Guarding against lookahead',
+  gates:'What each gate filters', measured:'What the replay measured',
+  rejected:'What was tried and rejected', costs:'The real constraint — costs',
+  raising:'If you raise them further',
+};
+// docs are authored server-side with **emphasis**; escape first, then allow
+// only that one construct through
+const docText = v => esc(v).replace(/\*\*(.+?)\*\*/g,'<b>$1</b>');
+
+function showDoc(which){
+  const d = S.docs?.[which]; if(!d) return;
+  $('detailTitle').textContent = d.title;
+  $('detailBody').innerHTML = `<dl class="dl">` + Object.entries(d)
+    .filter(([k])=>k!=='title')
+    .map(([k,v])=>`<dt>${esc(DOC_LABELS[k] || k.replace(/_/g,' '))}</dt>
+      <dd>${docText(v)}</dd>`).join('') + `</dl>`;
+  openModal('detailModal');
+}
+
+/* ================================================================ websocket */
+let wsPing = null, wsRetry = null;
+function connectWS(){
+  clearInterval(wsPing); clearTimeout(wsRetry);
+  const ws = new WebSocket((location.protocol==='https:'?'wss':'ws')+'://'+location.host+'/ws');
+  ws.onopen = ()=>{ $('conn').textContent='● live'; $('conn').style.color='var(--up)';
+    // one keepalive per socket. Without clearing it on close, every reconnect
+    // left another timer sending into a dead socket forever.
+    clearInterval(wsPing);
+    wsPing = setInterval(()=>{
+      if(ws.readyState !== WebSocket.OPEN){ clearInterval(wsPing); return; }
+      try{ ws.send('ping'); }catch(e){}
+    },25000);
+  };
+  ws.onclose = ()=>{ clearInterval(wsPing);
+    $('conn').textContent='● reconnecting'; $('conn').style.color='var(--down)';
+    wsRetry = setTimeout(connectWS,3000); };
+  ws.onerror = ()=>{ try{ ws.close(); }catch(e){} };
+  ws.onmessage = ev => {
+    const m = JSON.parse(ev.data);
+    if(m.kind==='tick'){
+      // matched against what the series holds, not against the selector
+      if(chartKey === m.symbol+'|'+m.tf){
+        try{ candleSeries.update({...m.bar,time:shiftT(m.bar.time)}); }
+        catch(e){ /* out-of-order tick mid-switch; the pending reload covers it */ }
+      }
+      return;
+    }
+    if(m.kind==='analysis'){
+      if(m.symbol===S.sym && m.tf===S.tf){
+        S.analysis = m.analysis; S.zones = m.analysis.zones?.zones||[];
+        drawZones(); drawPlanLines();
+        if(m.analysis.timing){
+          const prevHour = S.timingChip?.now_ist?.slice(0,2);
+          S.timingChip = m.analysis.timing;
+          updateTimingChip();
+          // the full profile view only needs refetching when the hour rolls
+          // over or the user is actually looking at it
+          if(S.tab==='timing' || prevHour !== S.timingChip.now_ist?.slice(0,2))
+            refreshTiming();
+        }
+        if(S.tab==='analysis') render();
+      }
+      return;
+    }
+    if(m.kind==='bar' || m.kind==='signals'){
+      if(chartKey === m.symbol+'|'+m.tf && m.bar){
+        // append the closed bar instead of refetching the whole window, and
+        // update() rather than setData so the zoom and scroll position hold
+        const bar = {...m.bar, time:shiftT(m.bar.time)};
+        const last = S.candles[S.candles.length-1];
+        if(last && last.time===bar.time) S.candles[S.candles.length-1]=bar;
+        else S.candles.push(bar);
+        // no trimming here: dropping the oldest bar from the array while the
+        // series keeps it would drift the EMAs. Trimmed on the next full repaint.
+        try{ appendBar(bar); }
+        catch(e){ paintSeries(); }   // ordering violation — rebuild wholesale
+      }
+      if(m.kind==='signals'){
+        S.feed.unshift({ts:Date.now()/1000,symbol:m.symbol,tf:m.tf,
+          events:m.events,confluence:m.confluence,explanation:m.explanation});
+        S.feed = S.feed.slice(0,300);
+        if(m.symbol===S.sym && m.tf===S.tf) updateMarkers();
+        if(S.tab==='feed') render();
+      }
+      if(m.symbol===S.sym) updateFunding(m.snapshot?.funding_rate);
+    }
+    if(m.kind==='alert') handleAlert(m.alert, m.channels||[]);
+  };
+}
+function handleAlert(a,channels){
+  S.alerts.unshift(a); S.alerts = S.alerts.slice(0,300);
+  if(a.symbol===S.sym && a.tf===S.tf) updateMarkers();
+  if(channels.includes('sound'))
+    playCat(a.priority==='high' ? 'high_priority' : catOfSetup((a.setups||[])[0]||''));
+  if(channels.includes('browser') && Notification.permission==='granted')
+    new Notification(`Sentinel: ${a.rule_name} — ${a.symbol} ${a.tf}`,
+      {body:a.message.slice(0,180)});
+  if(S.tab==='alerts'||S.tab==='feed') render();
+}
+function updateFunding(fr){
+  if(fr===null||fr===undefined) return;
+  const el = $('fundingChip');
+  el.textContent = `funding ${(fr*100).toFixed(4)}%`;
+  el.style.color = fr>0 ? 'var(--down)' : 'var(--up)';
+}
+
+/* ================================================================ sidebar */
+function renderSide(){
+  $('watchlist').innerHTML = S.symbols.map(s=>`
+    <div class="wl ${s===S.sym?'on':''}" onclick="selectSym('${s}')">
+      <span>${esc(s)}</span>
+      <span class="dim xs" onclick="event.stopPropagation();removeSymbol('${s}')">✕</span>
+    </div>`).join('');
+  // The help affordance sits *outside* the label on purpose: nested inside it,
+  // a click on it also activates the label and flips the checkbox.
+  const toggle = name => `
+    <div class="row sm" style="gap:6px;padding:1px 0">
+      <label class="row grow" style="gap:6px;cursor:pointer;min-width:0">
+        <input type="checkbox" ${S.enabled.includes(name)?'checked':''}
+               onchange="toggleSetup('${name}',this.checked)">
+        <span>${esc(name.replace(/_/g,' '))}</span>
+      </label>
+      <span class="dim xs click" style="padding:0 4px"
+            onclick="showSetup('${name}')" title="What this setup is">?</span>
+    </div>`;
+  $('playbook').innerHTML = S.playbook.map(toggle).join('');
+  $('setupToggles').innerHTML = Object.entries(S.categories).map(([cat,list])=>`
+    <div style="margin-bottom:9px">
+      <div class="dim xs" style="text-transform:uppercase">${esc(cat)}</div>
+      ${list.map(toggle).join('')}
+    </div>`).join('');
+}
+function selectSym(s){ S.sym=s; $('symSel').value=s; renderSide(); refreshSymbol(); }
+async function toggleSetup(name,on){
+  S.enabled = on ? [...S.enabled,name] : S.enabled.filter(x=>x!==name);
+  await post('prefs',{enabled_setups:S.enabled});
+  renderSide();
+}
+async function addSymbol(){
+  const s = $('newSym').value.trim().toUpperCase(); if(!s) return;
+  S.symbols.push(s); $('newSym').value='';
+  await post('prefs',{symbols:S.symbols});
+  alert('Symbol saved. Restart the server to subscribe its streams.');
+  renderSide();
+}
+async function removeSymbol(s){
+  // guarded: dropping a symbol stops its streams and only a server restart
+  // brings them back, so a stray click should not do it silently
+  if(!confirm(`Remove ${s} from the watchlist?\n\n`
+    +`Its streams stop at the next server restart, and re-adding it also needs `
+    +`a restart before data returns.`)) return;
+  S.symbols = S.symbols.filter(x=>x!==s);
+  await post('prefs',{symbols:S.symbols});
+  renderSide();
+}
+
+/* ================================================================ panel */
+function render(){
+  const el = $('panel');
+  el.innerHTML = S.tab==='analysis' ? renderAnalysis()
+    : S.tab==='timing' ? renderTiming()
+    : S.tab==='feed' ? renderFeed()
+    : S.tab==='alerts' ? renderAlerts()
+    : S.tab==='rules' ? renderRules()
+    : renderSettings();
+}
+function renderFeed(){
+  if(!S.feed.length) return `<div class="muted sm">Waiting for closed candles —
+    signals appear here as setups occur.</div>`;
+  return `<div class="stack">`+S.feed.map((f,i)=>`
+    <div class="card pad tier ${tierOf(f.confluence.score)} click" onclick="jumpFeed(${i})"
+         title="Click to show on chart">
+      <div class="row wrap sm">
+        <b>${esc(f.symbol)}</b><span class="chip">${esc(f.tf)}</span>
+        ${f.events.map(e=>`<span class="chip">${esc(e.setup.replace(/_/g,' '))}
+          ${e.direction==='long'?'▲':e.direction==='short'?'▼':'•'}</span>`).join('')}
+        <div class="sp"></div>
+        <b class="mono" style="color:${scoreColor(f.confluence.score)}">${f.confluence.score}</b>
+        <span class="dim">/100</span>
+        <span class="dim xs">${fmtT(f.ts)}</span>
+      </div>
+      <div class="sm muted" style="margin-top:4px">${esc(f.explanation)}</div>
+    </div>`).join('')+`</div>`;
+}
+function renderAlerts(){
+  if(!S.alerts.length) return `<div class="muted sm">No rule alerts yet.
+    Alerts fire when every condition in one of your rules matches.</div>`;
+  return `<div class="stack">`+S.alerts.map((a,i)=>`
+    <div class="card pad tier ${a.priority==='high'?'high':'med'} click" onclick="jumpAlert(${i})">
+      <div class="row wrap sm">
+        <b>🔔 ${esc(a.rule_name)}</b><b>${esc(a.symbol)}</b>
+        <span class="chip">${esc(a.tf)}</span>
+        ${(a.setups||[]).map(s=>`<span class="chip">${esc(s.replace(/_/g,' '))}</span>`).join('')}
+        <div class="sp"></div>
+        <b class="mono" style="color:${scoreColor(a.score)}">${a.score}</b><span class="dim">/100</span>
+        <span class="dim xs">${fmtDT(a.ts)}</span>
+      </div>
+      <div class="sm muted" style="margin-top:4px">${esc(a.message)}</div>
+    </div>`).join('')+`</div>`;
+}
+
+/* ---------------------------------------------------------- rules */
+const blankRule = () => ({id:'',name:'New rule',enabled:true,symbols:[],timeframes:['5m'],
+  min_confluence:0,min_confirmations:1,cooldown_sec:900,channels:['browser','sound'],
+  priority:'normal',logic:{op:'AND',items:[{type:'setup',name:S.all[0]||'ema_pullback'}]}});
+let editing = null;
+function renderRules(){
+  if(editing) return renderRuleEditor();
+  return `<div style="margin-bottom:12px">
+    <button class="primary" onclick="editing=blankRule();render()">+ New rule</button></div>
+  <div class="stack">`+S.rules.map(r=>`
+    <div class="card pad">
+      <div class="row wrap">
+        <input type="checkbox" ${r.enabled?'checked':''} onchange="toggleRule('${r.id}',this.checked)">
+        <b>${esc(r.name)}</b>
+        <span class="chip">${(r.timeframes||[]).join(', ')||'all TFs'}</span>
+        <span class="chip">${(r.symbols||[]).join(', ')||'all symbols'}</span>
+        <span class="chip">score ≥ ${r.min_confluence||0}</span>
+        <span class="chip">${(r.channels||[]).join('+')}</span>
+        ${r.priority==='high'?'<span class="chip bad">high priority</span>':''}
+        <div class="sp"></div>
+        <button class="tiny" onclick='editing=JSON.parse(${JSON.stringify(JSON.stringify(r))});render()'>Edit</button>
+        <button class="tiny danger" onclick="deleteRule('${r.id}')">Delete</button>
+      </div>
+      <div class="mono xs dim" style="margin-top:5px">${esc(logicText(r.logic))}</div>
+    </div>`).join('')+`</div>`;
+}
+function logicText(n){
+  if(!n) return '';
+  if(n.op) return '('+(n.items||[]).map(logicText).join(` ${n.op} `)+')';
+  if(n.type==='setup') return n.name;
+  if(n.type==='indicator') return `${n.field} ${n.cmp} ${n.target??n.value}`;
+  if(n.type==='confluence') return `confluence ≥ ${n.min}`;
+  return '?';
+}
+const IND_FIELDS = ['close','ema9','ema20','ema21','ema50','ema200','rsi_2','rsi_14',
+  'vwap','atr_pct','vol_z','vol_ratio','bb_z','bb_width_pctile','taker_buy_ratio',
+  'vwap_dist_atr','funding_rate','ret_1','ret_3'];
+function nodeEditor(node,path){
+  if(node.op) return `
+    <div style="border:1px solid var(--line2);border-radius:9px;padding:8px;margin:5px 0">
+      <div class="row wrap">
+        <select onchange="setNode('${path}','op',this.value)">
+          <option ${node.op==='AND'?'selected':''}>AND</option>
+          <option ${node.op==='OR'?'selected':''}>OR</option></select>
+        <button class="tiny" onclick="addNode('${path}','setup')">+ setup</button>
+        <button class="tiny" onclick="addNode('${path}','indicator')">+ indicator</button>
+        <button class="tiny" onclick="addNode('${path}','group')">+ group</button>
+        ${path?`<button class="tiny danger" onclick="delNode('${path}')">✕</button>`:''}
+      </div>
+      ${(node.items||[]).map((ch,i)=>nodeEditor(ch,path?path+'.'+i:''+i)).join('')}
+    </div>`;
+  if(node.type==='setup') return `
+    <div class="row wrap" style="margin:5px 0">
+      <span class="chip">setup</span>
+      <select onchange="setNode('${path}','name',this.value)">
+        ${S.all.map(s=>`<option ${node.name===s?'selected':''}>${s}</option>`).join('')}</select>
+      <button class="tiny danger" onclick="delNode('${path}')">✕</button>
+    </div>`;
+  return `
+    <div class="row wrap" style="margin:5px 0">
+      <span class="chip">indicator</span>
+      <select onchange="setNode('${path}','field',this.value)">
+        ${IND_FIELDS.map(f=>`<option ${node.field===f?'selected':''}>${f}</option>`).join('')}</select>
+      <select onchange="setNode('${path}','cmp',this.value)">
+        ${['>','<','>=','<='].map(c=>`<option ${node.cmp===c?'selected':''}>${c}</option>`).join('')}</select>
+      <select onchange="setNodeTargetKind('${path}',this.value)">
+        <option ${node.target!==undefined?'selected':''} value="field">field</option>
+        <option ${node.target===undefined?'selected':''} value="number">number</option></select>
+      ${node.target!==undefined
+        ? `<select onchange="setNode('${path}','target',this.value)">
+            ${IND_FIELDS.map(f=>`<option ${node.target===f?'selected':''}>${f}</option>`).join('')}</select>`
+        : `<input type="number" step="any" value="${node.value??0}" style="width:96px"
+             onchange="setNode('${path}','value',parseFloat(this.value))">`}
+      <button class="tiny danger" onclick="delNode('${path}')">✕</button>
+    </div>`;
+}
+const getNode = path => path==='' ? editing.logic
+  : path.split('.').reduce((n,i)=>n.items[+i], editing.logic);
+function parentOf(path){ const p=path.split('.'); const idx=+p.pop();
+  return [p.length?getNode(p.join('.')):editing.logic, idx]; }
+function setNode(path,k,v){ getNode(path)[k]=v; if(k==='target') delete getNode(path).value; render(); }
+function setNodeTargetKind(path,kind){ const n=getNode(path);
+  if(kind==='field'){ n.target='ema200'; delete n.value; } else { delete n.target; n.value=0; }
+  render(); }
+function addNode(path,kind){ const n=getNode(path); n.items=n.items||[];
+  n.items.push(kind==='group'?{op:'AND',items:[]}
+    :kind==='setup'?{type:'setup',name:S.all[0]}
+    :{type:'indicator',field:'close',cmp:'>',target:'ema200'});
+  render(); }
+function delNode(path){ const [parent,idx]=parentOf(path); parent.items.splice(idx,1); render(); }
+function renderRuleEditor(){
+  const r = editing, chan = ['browser','sound','telegram','discord','email'];
+  return `<div class="card pad-lg stack" style="max-width:820px">
+    <div class="row">
+      <input value="${esc(r.name)}" class="grow" onchange="editing.name=this.value">
+      <label class="inline"><input type="checkbox" ${r.enabled?'checked':''}
+        onchange="editing.enabled=this.checked"> enabled</label>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px" class="sm">
+      <div><div class="dim xs">Symbols (empty = all)</div>
+        ${S.symbols.map(s=>`<label class="inline"><input type="checkbox"
+          ${r.symbols.includes(s)?'checked':''}
+          onchange="editing.symbols=this.checked?[...editing.symbols,'${s}']:editing.symbols.filter(x=>x!=='${s}')"> ${s}</label>`).join('')}</div>
+      <div><div class="dim xs">Timeframes</div>
+        ${S.timeframes.map(t=>`<label class="inline"><input type="checkbox"
+          ${r.timeframes.includes(t)?'checked':''}
+          onchange="editing.timeframes=this.checked?[...editing.timeframes,'${t}']:editing.timeframes.filter(x=>x!=='${t}')"> ${t}</label>`).join('')}</div>
+      <div>Min confluence <input type="number" min="0" max="100" value="${r.min_confluence}"
+        style="width:70px" onchange="editing.min_confluence=+this.value"></div>
+      <div>Min confirmations <input type="number" min="1" max="5" value="${r.min_confirmations}"
+        style="width:70px" onchange="editing.min_confirmations=+this.value"></div>
+      <div>Cooldown (s) <input type="number" min="0" value="${r.cooldown_sec}"
+        style="width:90px" onchange="editing.cooldown_sec=+this.value"></div>
+      <div>Priority <select onchange="editing.priority=this.value">
+        <option ${r.priority==='normal'?'selected':''}>normal</option>
+        <option ${r.priority==='high'?'selected':''}>high</option></select></div>
+      <div style="grid-column:span 2">Channels:
+        ${chan.map(c=>`<label class="inline"><input type="checkbox"
+          ${r.channels.includes(c)?'checked':''}
+          onchange="editing.channels=this.checked?[...editing.channels,'${c}']:editing.channels.filter(x=>x!=='${c}')"> ${c}</label>`).join('')}</div>
+    </div>
+    <div class="sm muted">Conditions (nested AND/OR):</div>
+    ${nodeEditor(r.logic,'')}
+    <div class="row">
+      <button class="primary" onclick="saveRule()">Save rule</button>
+      <button onclick="editing=null;render()">Cancel</button>
+    </div>
+  </div>`;
+}
+async function saveRule(){
+  await post('rules',editing);
+  editing=null; S.rules = await api('rules'); render();
+}
+async function toggleRule(id,on){
+  const r = S.rules.find(x=>x.id===id); r.enabled=on; await post('rules',r);
+}
+async function deleteRule(id){
+  await fetch('/api/rules/'+id,{method:'DELETE'});
+  S.rules = await api('rules'); render();
+}
+
+/* ---------------------------------------------------------- settings */
+function renderSettings(){
+  const p = S.prefs, ch = p.channels||{};
+  const cats = [...Object.keys(S.categories),'high_priority'];
+  return `<div class="stack-lg" style="max-width:820px">
+    <div class="card pad-lg">
+      <div class="row"><b>Appearance</b></div>
+      <div class="row wrap" style="margin-top:8px">
+        ${THEMES.map(([v,l])=>`<button class="${THEME===v?'active':''}"
+          onclick="applyTheme('${v}');render()">${l}</button>`).join('')}
+      </div>
+    </div>
+
+    <div class="card pad-lg">
+      <div class="row"><b>Trade gate — only signal above these</b>
+        <div class="sp"></div>
+        <button class="ghost tiny" onclick="showDoc('gate')">how these were chosen</button>
+      </div>
+      <div class="sm muted" style="margin:6px 0 10px">
+        A bar has to clear every one of these before the Analysis tab will say buy or
+        sell. Anything failing is shown as <b>wait</b> with the reason. Defaults come
+        from replaying this engine over history, not from taste.
+      </div>
+      <table class="t">
+        <tr><th>gate</th><th>value</th><th>what it filters</th></tr>
+        ${gateRow('min_score','Min score',0,100,1,'Headline conviction (1-100).')}
+        ${gateRow('min_net','Min directional lean',0,1,0.01,
+          'Absolute net direction, 0-1. Below this the sides are too close to call.')}
+        ${gateRow('min_agreement','Min agreement',0,1,0.05,
+          'Fraction of scoring components pointing the same way.')}
+        ${gateRow('min_rr','Min reward:risk',0,5,0.1,
+          'Reward to risk against the first target. Filters bad location.')}
+        ${gateRow('min_timing','Min session quality',0,100,1,
+          'The Timing score. Blocks thin, easily-pushed hours.')}
+        <tr><td>Block squeezes</td>
+          <td><input type="checkbox" ${p.gate?.block_squeeze?'checked':''}
+                onchange="saveGate('block_squeeze',this.checked)"></td>
+          <td class="sm muted">Refuse to act while volatility is compressed and the
+            direction is undecided.</td></tr>
+      </table>
+      <div class="row" style="margin-top:10px">
+        <button onclick="resetGate()">Reset to measured defaults</button>
+        <button onclick="loosenGate()">Signal on everything (no gate)</button>
+      </div>
+    </div>
+
+    <div class="card pad-lg">
+      <div class="row"><b>Position sizing</b></div>
+      <div class="row wrap sm" style="margin-top:8px">
+        <label class="inline">quantity
+          <input type="number" step="0.001" min="0.0001" style="width:96px"
+                 value="${p.position_qty??0.01}"
+                 onchange="savePref('position_qty',parseFloat(this.value))"></label>
+        <label class="inline">leverages
+          <input style="width:200px" value="${(p.leverages||[100,200,300,400]).join(', ')}"
+                 onchange="savePref('leverages',this.value.split(',').map(x=>parseInt(x.trim())).filter(Boolean))"></label>
+      </div>
+      <div class="sm dim" style="margin-top:6px">
+        Drives the leverage table on the Analysis tab. Takes effect on the next closed candle.
+      </div>
+    </div>
+
+    <div class="card pad-lg">
+      <div class="row"><b>Browser &amp; desktop notifications</b></div>
+      <div class="row" style="margin-top:8px">
+        <button class="primary" onclick="Notification.requestPermission().then(()=>render())">
+          ${Notification.permission==='granted'?'✓ Permission granted':'Enable notifications'}</button>
+        <button onclick="testAlert()">Send test alert</button>
+      </div>
+    </div>
+
+    <div class="card pad-lg">
+      <div class="row"><b>Sounds (per setup category)</b></div>
+      <div class="stack sm" style="margin-top:8px">
+      ${cats.map(cat=>{ const c=soundConf(cat); return `
+        <div class="row wrap" style="border-bottom:1px solid var(--line);padding-bottom:7px">
+          <span style="width:110px" class="${cat==='high_priority'?'down':''}">${cat.replace(/_/g,' ')}</span>
+          <label class="inline"><input type="checkbox" ${c.enabled?'checked':''}
+            onchange="setSound('${cat}','enabled',this.checked)"> on</label>
+          <label class="inline">vol <input type="range" min="0" max="1" step="0.05"
+            value="${c.volume}" onchange="setSound('${cat}','volume',+this.value)"></label>
+          <label class="inline">cooldown <input type="number" min="0" value="${c.cooldown}"
+            style="width:60px" onchange="setSound('${cat}','cooldown',+this.value)">s</label>
+          <label class="inline">repeat <input type="number" min="1" max="5" value="${c.repeat}"
+            style="width:52px" onchange="setSound('${cat}','repeat',+this.value)"></label>
+          <label class="chip click">${c.custom?'custom ✓':'upload'}
+            <input type="file" accept="audio/mpeg,audio/wav,audio/ogg" class="hide"
+              onchange="uploadSound('${cat}',this)"></label>
+          ${c.custom?`<button class="tiny" onclick="setSound('${cat}','custom',null)">reset</button>`:''}
+          <button class="tiny" onclick="playCatForce('${cat}')">▶ test</button>
+        </div>`;}).join('')}
+      </div>
+    </div>
+
+    <div class="card pad-lg stack sm">
+      <b>Telegram</b>
+      <input placeholder="bot token" style="width:380px" value="${esc(ch.telegram?.bot_token||'')}"
+        onchange="setChan('telegram','bot_token',this.value)">
+      <input placeholder="chat id" style="width:200px" value="${esc(ch.telegram?.chat_id||'')}"
+        onchange="setChan('telegram','chat_id',this.value)">
+      <b style="margin-top:8px">Discord</b>
+      <input placeholder="webhook url" value="${esc(ch.discord?.webhook_url||'')}"
+        onchange="setChan('discord','webhook_url',this.value)">
+      <b style="margin-top:8px">Email (SMTP)</b>
+      <div class="row wrap">
+        <input placeholder="smtp host" value="${esc(ch.email?.smtp_host||'')}"
+          onchange="setChan('email','smtp_host',this.value)">
+        <input placeholder="port" style="width:76px" value="${esc(ch.email?.port||587)}"
+          onchange="setChan('email','port',this.value)">
+        <input placeholder="user" value="${esc(ch.email?.user||'')}"
+          onchange="setChan('email','user',this.value)">
+        <input placeholder="password" type="password" value="${esc(ch.email?.password||'')}"
+          onchange="setChan('email','password',this.value)">
+        <input placeholder="to address" value="${esc(ch.email?.to||'')}"
+          onchange="setChan('email','to',this.value)">
+      </div>
+      <div><button class="primary" onclick="saveChannels()">Save channel settings</button></div>
+    </div>
+  </div>`;
+}
+const GATE_DEFAULTS = {min_score:35,min_net:0.12,min_agreement:0,min_rr:0,
+  min_timing:0,block_squeeze:false};
+function gateRow(key,label,min,max,step,help){
+  const v = S.prefs.gate?.[key] ?? GATE_DEFAULTS[key];
+  return `<tr><td>${esc(label)}</td>
+    <td><input type="number" min="${min}" max="${max}" step="${step}" value="${v}"
+        style="width:84px" onchange="saveGate('${key}',parseFloat(this.value))"></td>
+    <td class="sm muted">${esc(help)}</td></tr>`;
+}
+async function saveGate(k,v){
+  S.prefs.gate = {...GATE_DEFAULTS, ...(S.prefs.gate||{}), [k]:v};
+  await post('prefs',{gate:S.prefs.gate});
+  await refreshAnalysis();            // the gate changes the verdict immediately
+  render();
+}
+async function resetGate(){
+  S.prefs.gate = {...GATE_DEFAULTS};
+  await post('prefs',{gate:S.prefs.gate}); await refreshAnalysis(); render();
+}
+async function loosenGate(){
+  S.prefs.gate = {min_score:0,min_net:0,min_agreement:0,min_rr:0,min_timing:0,
+    block_squeeze:false};
+  await post('prefs',{gate:S.prefs.gate}); await refreshAnalysis(); render();
+}
+
+function setSound(cat,k,v){ soundCfg[cat]=Object.assign(soundConf(cat),{[k]:v});
+  localStorage.setItem('soundCfg',JSON.stringify(soundCfg)); if(k!=='volume') render(); }
+function playCatForce(cat){ lastSound[cat]=0; playCat(cat); }
+function uploadSound(cat,input){
+  const f = input.files[0]; if(!f) return;
+  if(f.size > 2*1024*1024){ alert('Max 2 MB'); return; }
+  const rd = new FileReader();
+  rd.onload = ()=>setSound(cat,'custom',rd.result);
+  rd.readAsDataURL(f);
+}
+function setChan(chan,k,v){ S.prefs.channels=S.prefs.channels||{};
+  S.prefs.channels[chan]=Object.assign(S.prefs.channels[chan]||{},{[k]:v}); }
+async function saveChannels(){ await post('prefs',{channels:S.prefs.channels}); alert('Saved.'); }
+async function savePref(k,v){ S.prefs[k]=v; await post('prefs',{[k]:v}); refreshAnalysis(); }
+async function testAlert(){
+  await post('test-alert',{channels:['browser','sound','telegram','discord','email'],
+    priority:'high'});
+}
+
+/* ---------------------------------------------------------- manual */
+function renderManual(){
+  const h = t=>`<h4 class="h">${t}</h4>`;
+  const p = t=>`<p class="sm muted">${t}</p>`;
+  const li = t=>`<li>${t}</li>`;
+  return `
+  ${p(`Sentinel watches live Binance data, detects when technical setups occur, scores how
+  many independent conditions agree, maps dynamic support and resistance, and does the
+  position arithmetic for your own size and leverage. It does not predict profit.`)}
+
+  ${h('1. Analysis tab — the score')}
+  ${p(`The big number is <b>conviction in the recommended action</b> (1-100). The two meters
+  are <b>buy score</b> and <b>sell score</b>, which always sum to 101 — they are the same
+  reading seen from either side. A clear direction can still carry a low headline score when
+  the location is poor or the volatility regime makes the stop unusable.
+  <a href="#" onclick="showDoc('score');return false">Full scoring breakdown →</a>`)}
+  ${p(`<b>Score breakdown</b> lists all nine components with their weight, signed reading and
+  live detail. Click any row to expand what it measures, why it matters, and how to read it.`)}
+
+  ${h('2. Dynamic support &amp; resistance')}
+  ${p(`Rectangles on the chart are price <b>bands</b> built by clustering confirmed swing
+  pivots within 0.45× ATR of each other, then scored on visits, hold rate, volume, timeframe
+  and recency. They are rebuilt on every closed candle and merged across timeframes — and when
+  a higher timeframe level breaks, lower-timeframe structure behind it is demoted automatically.
+  Click any rectangle for its full statistics.
+  <a href="#" onclick="showDoc('zones');return false">How zones adjust →</a>`)}
+  ${p(`Fill opacity tracks strength. Solid border = major, dashed = medium or minor,
+  dotted and faint = invalidated by a higher-timeframe break. Green = support, red =
+  resistance, purple = flipped level, blue = price is inside the band.
+  Use the <b>zones</b> selector in the drag bar to show all, major only, or none.`)}
+
+  ${h('3. Scalping playbook')}
+  ${p(`The six setups most 1-5m crypto scalpers actually run are listed first in the sidebar:
+  EMA 9/21 cross + pullback, VWAP bounce, liquidity grab, RSI + S/R confluence,
+  breakout + retest, and Bollinger squeeze expansion. Click the <b>?</b> next to any setup
+  for its trigger condition, rationale, execution and known failure mode.`)}
+
+  ${h('4. Signals vs alerts')}
+  ${p(`A <b>signal</b> is one closed candle where at least one setup fired — everything lands
+  in the Feed. An <b>alert</b> is one of <i>your rules</i> matching, and only alerts make sound
+  or raise notifications. Feed answers "what is happening"; Alerts answers "what I asked to be
+  told about".`)}
+
+  ${h('5. Position and leverage')}
+  ${p(`The leverage table uses your configured quantity (Settings → Position sizing) and shows
+  margin, liquidation distance and liquidation price per leverage step, plus whether the current
+  setup's stop actually fits inside it. Rows highlighted red mean you would be liquidated before
+  your stop is hit — which is the single most common way high-leverage accounts die.`)}
+
+  ${h('6. Building rules (no code)')}
+  ${p(`Rules tab → New rule. A rule fires when its condition tree matches on a closed candle.
+  Three condition types combine with nested AND/OR groups:`)}
+  <ul class="list">
+    ${li('<b>setup</b> — a detector fired this bar.')}
+    ${li('<b>indicator</b> — compare live snapshot values: <code>close &gt; ema200</code>, <code>rsi_14 &lt; 30</code>, <code>bb_width_pctile &lt; 0.2</code>, <code>vwap_dist_atr &gt; 2</code>. This is how you define fully custom setups.')}
+    ${li('<b>confluence</b> — a minimum score gate.')}
+  </ul>
+  ${p(`Per rule: symbols, timeframes, minimum confluence, minimum distinct setups, cooldown
+  seconds per symbol+timeframe, priority, and channels.`)}
+
+  ${h('7. Notifications')}
+  <ul class="list">
+    ${li('<b>Browser</b>: enable once in Settings.')}
+    ${li('<b>Sound</b>: per-category tones, custom MP3/WAV/OGG upload up to 2 MB, volume, cooldown, repeat.')}
+    ${li('<b>Telegram</b>: @BotFather for a token, message the bot once, read your chat id from <code>api.telegram.org/bot&lt;TOKEN&gt;/getUpdates</code>.')}
+    ${li('<b>Discord</b>: channel → Edit → Integrations → Webhooks → New.')}
+    ${li('<b>Email</b>: any SMTP account (Gmail needs an App Password).')}
+  </ul>
+
+  ${h('8. Themes and layout')}
+  ${p(`Three themes — light, medium, dark — from the header selector or Settings; the choice is
+  saved server-side and in this browser. Drag the ⋯ bar to resize the chart, ▼ collapse hides
+  the bottom panel, « collapses the sidebar. Timezone applies to the chart axis and every
+  timestamp.`)}
+
+  ${h('9. Troubleshooting')}
+  <ul class="list">
+    ${li('Added a symbol but no data → restart the server; stream subscriptions are set at startup.')}
+    ${li('No liquidation signals → the Binance futures stream may be blocked on your network; everything else still works.')}
+    ${li('No sound → click the page once (browsers block audio before interaction).')}
+    ${li('Feed empty → signals only occur on closed candles; 1m fills fastest. Feed clears on restart, alert history persists in sentinel.db.')}
+    ${li('Zones missing → a timeframe needs 60+ bars, and bb_squeeze needs 130+.')}
+  </ul>
+
+  ${h('10. The honest part')}
+  ${p(`The backtester in this same repo tested these setups on three years of BTCUSDT with
+  realistic fees and slippage: every canonical intraday strategy lost money after costs, and an
+  ML model on the same indicators found only a statistically-real-but-economically-worthless
+  edge. A high score means "many conditions agree right now", never "this trade wins".
+  At 100-400× leverage, sizing and risk decide the outcome far more than the signal does.`)}`;
+}
+
+/* ================================================================ layout */
+let sideHidden = localStorage.getItem('sideHidden')==='1';
+function applySide(){
+  $('side').style.display = sideHidden ? 'none' : '';
+  $('strip').style.display = sideHidden ? 'flex' : 'none';
+}
+function toggleSide(){ sideHidden=!sideHidden;
+  localStorage.setItem('sideHidden',sideHidden?'1':'0'); applySide(); }
+
+let collapsed = localStorage.getItem('collapsed')==='1';
+function applyChartHeight(){
+  const h = +localStorage.getItem('chartH') || 0;
+  if(collapsed){ $('panel').style.display='none'; $('chartWrap').style.height='calc(100% - 26px)'; }
+  else { $('panel').style.display=''; $('chartWrap').style.height = h ? h+'px' : '46%'; }
+  $('collapseBtn').textContent = collapsed ? '▲ expand' : '▼ collapse';
+}
+function initDivider(){
+  const div = $('divider'); let dragging=false;
+  div.addEventListener('mousedown',e=>{ if(collapsed) return; dragging=true; e.preventDefault(); });
+  window.addEventListener('mousemove',e=>{
+    if(!dragging) return;
+    const top = $('center').getBoundingClientRect().top;
+    const h = Math.max(140, Math.min(e.clientY-top, window.innerHeight-180));
+    localStorage.setItem('chartH',h); $('chartWrap').style.height = h+'px';
+  });
+  window.addEventListener('mouseup',()=>dragging=false);
+  $('collapseBtn').onclick = ()=>{ collapsed=!collapsed;
+    localStorage.setItem('collapsed',collapsed?'1':'0'); applyChartHeight(); };
+  $('markerSel').value = MK;
+  $('markerSel').onchange = e=>{ MK=e.target.value;
+    localStorage.setItem('markers',MK); updateMarkers(); };
+  $('zoneSel').value = ZONE_MODE;
+  $('zoneSel').onchange = e=>{ ZONE_MODE=e.target.value;
+    localStorage.setItem('zoneMode',ZONE_MODE); drawZones(); };
+  $('centerChk').checked = centerLive;
+  applyChartHeight();
+}
+
+/* ================================================================ init */
+$('tabs').innerHTML = TABS.map(([k,l])=>
+  `<button data-tab="${k}" class="${k===S.tab?'active':''}">${l}</button>`).join('')
+  + `<button onclick="openHelp()">? Help</button>`;
+document.querySelectorAll('#tabs button[data-tab]').forEach(b=>b.onclick=()=>{
+  S.tab = b.dataset.tab;
+  document.querySelectorAll('#tabs button[data-tab]')
+    .forEach(x=>x.classList.toggle('active',x===b));
+  render();
+});
+function openHelp(){ $('helpBody').innerHTML = renderManual(); openModal('helpModal'); }
+
+$('tzSel').innerHTML = TIMEZONES.map(([tz,l])=>
+  `<option value="${tz}" ${tz===TZ?'selected':''}>${l}</option>`).join('');
+$('tzSel').onchange = e=>{ TZ=e.target.value; TZ_OFF=tzOffsetSec(TZ);
+  localStorage.setItem('tz',TZ); loadChart(); render(); };
+$('themeSel').innerHTML = THEMES.map(([v,l])=>
+  `<option value="${v}" ${v===THEME?'selected':''}>${l}</option>`).join('');
+$('themeSel').onchange = e=>{ applyTheme(e.target.value); render(); };
+$('symSel').onchange = e=>{ S.sym=e.target.value; renderSide(); refreshSymbol(); };
+$('tfSel').onchange  = e=>{ S.tf=e.target.value; updateCloseTimer(); refreshSymbol(); };
+
+document.documentElement.dataset.theme = THEME;
+
+(async function(){
+  const st = await api('state');
+  S.symbols=st.symbols; S.timeframes=st.timeframes; S.enabled=st.enabled_setups;
+  S.all=st.all_setups; S.categories=st.categories; S.funding=st.funding;
+  S.playbook=st.scalp_playbook||[];
+  if(!localStorage.getItem('theme') && st.theme) applyTheme(st.theme);
+  S.prefs  = await api('prefs');
+  S.docs   = await api('docs');
+  S.rules  = await api('rules');
+  S.feed   = await api('feed');
+  S.alerts = await api('alerts');
+  if(S.symbols.length) S.sym = S.symbols[0];
+  if(!S.timeframes.includes(S.tf)) S.tf = S.timeframes[0];
+  $('symSel').innerHTML = S.symbols.map(s=>`<option>${s}</option>`).join('');
+  $('tfSel').innerHTML = S.timeframes.map(t=>
+    `<option ${t===S.tf?'selected':''}>${t}</option>`).join('');
+  updateFunding(S.funding[S.sym]);
+  initChart(); sizeCanvas(); initDivider(); applySide();
+  renderSide(); render(); connectWS();
+  await refreshSymbol();
+  updateCloseTimer();
+  setInterval(updateCloseTimer, 1000);
+  // safety net: on quiet symbols a bar close may be minutes away, and the
+  // session score changes on the clock rather than on price
+  setInterval(refreshTiming, 5 * 60 * 1000);
+})();
+</script>
+</body>
+</html>

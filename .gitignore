@@ -1,0 +1,40 @@
+# ---- virtual environment -------------------------------------------------
+# Never commit this: ~164 MB, platform-specific, and absolute paths are baked
+# into pyvenv.cfg and Scripts/, so a checked-out copy would not run anywhere
+# else. Recreate with run.ps1, or:
+#   py -m venv .venv
+#   .venv\Scripts\python.exe -m pip install -r requirements.txt
+.venv/
+venv/
+env/
+
+# ---- Python bytecode -----------------------------------------------------
+__pycache__/
+*.py[cod]
+*.pyo
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# ---- local state, and SECRETS -------------------------------------------
+# sentinel.db holds preferences, saved rules and alert history. Once the
+# notification channels are filled in it also holds the Telegram bot token,
+# Discord webhook URL and SMTP password in plain text. Committing it leaks them.
+*.db
+*.db-journal
+*.sqlite
+*.sqlite3
+*.log
+
+# ---- editor / OS ---------------------------------------------------------
+.vscode/
+.idea/
+*.swp
+Thumbs.db
+desktop.ini
+.DS_Store
+
+# ---- scratch -------------------------------------------------------------
+scratchpad/
+sweep_rows.json
+*.original.md

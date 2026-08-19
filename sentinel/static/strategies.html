@@ -1,0 +1,682 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sentinel — Strategy Reference</title>
+<style>
+:root{
+  --bg:#f5f7f9; --panel:#ffffff; --sunk:#eef1f5;
+  --line:#dde3ea; --line-strong:#c2ccd8;
+  --ink:#212936; --ink-2:#55606f; --ink-3:#7f8b99;
+  --long:#12805c; --short:#c0453f; --neutral:#8a6608;
+  --long-soft:rgba(18,128,92,.10); --short-soft:rgba(192,69,63,.10);
+  --neutral-soft:rgba(138,102,8,.12);
+  --accent:#2f6fd0;
+  --grid:#e7ebf0;
+  --shadow:0 1px 2px rgba(20,30,50,.05), 0 8px 24px rgba(20,30,50,.06);
+}
+@media (prefers-color-scheme: dark){
+  :root{
+    --bg:#11151c; --panel:#171c25; --sunk:#1d232d;
+    --line:#262d38; --line-strong:#39424f;
+    --ink:#c8d0da; --ink-2:#8d97a5; --ink-3:#646f7d;
+    --long:#3fbf93; --short:#e5747a; --neutral:#cfa348;
+    --long-soft:rgba(63,191,147,.12); --short-soft:rgba(229,116,122,.12);
+    --neutral-soft:rgba(207,163,72,.14);
+    --accent:#6a9be0;
+    --grid:#1c222b;
+    --shadow:0 1px 2px rgba(0,0,0,.3), 0 10px 30px rgba(0,0,0,.35);
+  }
+}
+:root[data-theme="light"]{
+  --bg:#f5f7f9; --panel:#ffffff; --sunk:#eef1f5;
+  --line:#dde3ea; --line-strong:#c2ccd8;
+  --ink:#212936; --ink-2:#55606f; --ink-3:#7f8b99;
+  --long:#12805c; --short:#c0453f; --neutral:#8a6608;
+  --long-soft:rgba(18,128,92,.10); --short-soft:rgba(192,69,63,.10);
+  --neutral-soft:rgba(138,102,8,.12);
+  --accent:#2f6fd0; --grid:#e7ebf0;
+  --shadow:0 1px 2px rgba(20,30,50,.05), 0 8px 24px rgba(20,30,50,.06);
+}
+:root[data-theme="dark"]{
+  --bg:#11151c; --panel:#171c25; --sunk:#1d232d;
+  --line:#262d38; --line-strong:#39424f;
+  --ink:#c8d0da; --ink-2:#8d97a5; --ink-3:#646f7d;
+  --long:#3fbf93; --short:#e5747a; --neutral:#cfa348;
+  --long-soft:rgba(63,191,147,.12); --short-soft:rgba(229,116,122,.12);
+  --neutral-soft:rgba(207,163,72,.14);
+  --accent:#6a9be0; --grid:#1c222b;
+  --shadow:0 1px 2px rgba(0,0,0,.3), 0 10px 30px rgba(0,0,0,.35);
+}
+
+*{box-sizing:border-box}
+body{
+  margin:0; background:var(--bg); color:var(--ink);
+  font:16px/1.6 ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;
+  -webkit-font-smoothing:antialiased;
+}
+.mono{font-family:ui-monospace,"Cascadia Code","SF Mono",Menlo,Consolas,monospace}
+.wrap{max-width:1180px;margin:0 auto;padding:0 24px}
+
+/* ---- masthead ---- */
+header{border-bottom:1px solid var(--line);background:var(--panel)}
+.mast{padding:56px 0 40px;display:grid;gap:20px}
+.eyebrow{
+  font-family:ui-monospace,"Cascadia Code",Consolas,monospace;
+  font-size:12px;letter-spacing:.16em;text-transform:uppercase;color:var(--ink-3);
+}
+h1{
+  margin:0;font-size:clamp(32px,5vw,52px);line-height:1.04;
+  font-weight:760;letter-spacing:-.025em;text-wrap:balance;max-width:20ch;
+}
+.standfirst{margin:0;max-width:62ch;color:var(--ink-2);font-size:17px}
+.legend{display:flex;flex-wrap:wrap;gap:8px;margin-top:4px}
+.tag{
+  font-family:ui-monospace,Consolas,monospace;font-size:11.5px;
+  letter-spacing:.06em;text-transform:uppercase;
+  padding:4px 10px;border-radius:3px;border:1px solid var(--line-strong);color:var(--ink-2);
+}
+.tag.l{color:var(--long);border-color:var(--long);background:var(--long-soft)}
+.tag.s{color:var(--short);border-color:var(--short);background:var(--short-soft)}
+.tag.n{color:var(--neutral);border-color:var(--neutral);background:var(--neutral-soft)}
+
+/* ---- reading the table ---- */
+.primer{padding:36px 0;border-bottom:1px solid var(--line)}
+.primer h2{font-size:19px;margin:0 0 14px;letter-spacing:-.01em}
+.primer-grid{display:grid;gap:16px;grid-template-columns:repeat(auto-fit,minmax(250px,1fr))}
+.note{
+  background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:16px;
+}
+.note h3{margin:0 0 6px;font-size:13px;letter-spacing:.04em;text-transform:uppercase;color:var(--ink-3)}
+.note p{margin:0;font-size:14.5px;color:var(--ink-2)}
+
+/* ---- category ---- */
+.cat{padding:52px 0 8px}
+.cat-head{display:flex;align-items:baseline;gap:14px;flex-wrap:wrap;
+  border-bottom:2px solid var(--ink);padding-bottom:10px;margin-bottom:8px}
+.cat-head h2{margin:0;font-size:26px;letter-spacing:-.02em;font-weight:720}
+.cat-head .count{font-family:ui-monospace,Consolas,monospace;font-size:12px;color:var(--ink-3)}
+.cat-blurb{margin:0 0 4px;color:var(--ink-2);font-size:15px;max-width:70ch}
+
+/* ---- entry ---- */
+.entry{
+  border:1px solid var(--line);border-radius:8px;background:var(--panel);
+  margin-top:24px;overflow:hidden;box-shadow:var(--shadow);
+}
+.entry-head{padding:18px 20px;border-bottom:1px solid var(--line);
+  display:flex;gap:14px;align-items:baseline;flex-wrap:wrap}
+.entry-head h3{margin:0;font-size:20px;letter-spacing:-.015em;font-weight:700}
+.key{font-family:ui-monospace,Consolas,monospace;font-size:12.5px;color:var(--ink-3)}
+.meta{margin-left:auto;display:flex;gap:6px;flex-wrap:wrap}
+.chip{
+  font-family:ui-monospace,Consolas,monospace;font-size:11px;letter-spacing:.04em;
+  padding:3px 8px;border-radius:3px;background:var(--sunk);color:var(--ink-2);
+  border:1px solid var(--line);white-space:nowrap;
+}
+.chip.play{color:var(--accent);border-color:var(--accent)}
+
+.body{display:grid;grid-template-columns:300px 1fr;gap:0}
+@media (max-width:820px){.body{grid-template-columns:1fr}}
+.figure{
+  padding:18px;border-right:1px solid var(--line);background:var(--sunk);
+  display:grid;gap:8px;align-content:start;
+}
+@media (max-width:820px){.figure{border-right:0;border-bottom:1px solid var(--line)}}
+.figure svg{width:100%;height:auto;display:block}
+.cap{font-size:12px;color:var(--ink-3);line-height:1.45}
+.detail{padding:18px 20px;display:grid;gap:16px;align-content:start;min-width:0}
+.desc{margin:0;font-size:15px;color:var(--ink-2);max-width:68ch}
+.desc b{color:var(--ink);font-weight:640}
+
+/* ---- signal table ---- */
+.sig{width:100%;border-collapse:collapse;font-size:14px}
+.sig th{
+  text-align:left;font-family:ui-monospace,Consolas,monospace;
+  font-size:10.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--ink-3);
+  font-weight:500;padding:0 0 8px;border-bottom:1px solid var(--line);
+}
+.sig td{padding:11px 12px 11px 0;border-bottom:1px solid var(--line);vertical-align:top}
+.sig tr:last-child td{border-bottom:0}
+.sig td:first-child{width:96px;padding-right:16px}
+.verdict{
+  display:inline-block;font-family:ui-monospace,Consolas,monospace;
+  font-size:11.5px;font-weight:600;letter-spacing:.09em;
+  padding:3px 9px;border-radius:3px;white-space:nowrap;
+}
+.verdict.l{color:var(--long);background:var(--long-soft);border:1px solid var(--long)}
+.verdict.s{color:var(--short);background:var(--short-soft);border:1px solid var(--short)}
+.verdict.n{color:var(--neutral);background:var(--neutral-soft);border:1px solid var(--neutral)}
+.cond{font-family:ui-monospace,"Cascadia Code",Consolas,monospace;font-size:13px;
+  line-height:1.55;color:var(--ink);overflow-wrap:anywhere}
+.cond .op{color:var(--accent)}
+.gloss{display:block;margin-top:4px;font-family:ui-sans-serif,system-ui,sans-serif;
+  font-size:13.5px;color:var(--ink-2)}
+
+.fails{
+  border-left:2px solid var(--short);background:var(--short-soft);
+  padding:10px 14px;font-size:13.5px;color:var(--ink-2);border-radius:0 4px 4px 0;
+}
+.fails b{color:var(--short);font-weight:640;letter-spacing:.03em;
+  font-size:11px;text-transform:uppercase;font-family:ui-monospace,Consolas,monospace;
+  display:block;margin-bottom:3px}
+
+/* ---- components ---- */
+.comp-table-wrap{overflow-x:auto;margin-top:20px;border:1px solid var(--line);
+  border-radius:8px;background:var(--panel)}
+table.comp{width:100%;border-collapse:collapse;font-size:14px;min-width:640px}
+table.comp th{text-align:left;padding:12px 14px;background:var(--sunk);
+  font-family:ui-monospace,Consolas,monospace;font-size:10.5px;letter-spacing:.1em;
+  text-transform:uppercase;color:var(--ink-3);font-weight:500;border-bottom:1px solid var(--line)}
+table.comp td{padding:12px 14px;border-bottom:1px solid var(--line);vertical-align:top}
+table.comp tr:last-child td{border-bottom:0}
+table.comp .w{font-family:ui-monospace,Consolas,monospace;
+  font-variant-numeric:tabular-nums;color:var(--ink-2)}
+.pos{color:var(--long);font-weight:600}
+.neg{color:var(--short);font-weight:600}
+
+footer{margin-top:64px;border-top:1px solid var(--line);background:var(--panel)}
+.foot{padding:36px 0 56px;display:grid;gap:14px}
+.foot p{margin:0;max-width:70ch;color:var(--ink-2);font-size:14.5px}
+.foot strong{color:var(--ink)}
+a{color:var(--accent)}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+@media (prefers-reduced-motion:no-preference){
+  .entry{transition:border-color .15s ease}
+}
+</style>
+</head>
+<body>
+
+
+<header>
+  <div class="wrap mast">
+    <div class="eyebrow">Sentinel · Detector Reference</div>
+    <h1>Twenty setups, and exactly what makes each one bullish</h1>
+    <p class="standfirst">
+      Every detector Sentinel runs, with its trigger conditions written out as they
+      appear in the code. Each entry states the precise condition that produces a
+      long reading, a short reading, and no reading at all — plus the known way it
+      fails. Thresholds here are the live ones; if the code changes, this drifts.
+    </p>
+    <div class="legend">
+      <span class="tag l">Long → bullish</span>
+      <span class="tag s">Short → bearish</span>
+      <span class="tag n">Neutral / no signal</span>
+      <span class="tag">weight = influence on the confluence score</span>
+    </div>
+  </div>
+</header>
+
+<div class="wrap">
+
+  <section class="primer">
+    <h2>How to read an entry</h2>
+    <div class="primer-grid">
+      <div class="note">
+        <h3>Direction, not confidence</h3>
+        <p>A detector only ever reports <span class="mono">long</span>,
+        <span class="mono">short</span> or nothing. It never says how likely the
+        move is — that judgement happens later, in the score.</p>
+      </div>
+      <div class="note">
+        <h3>Strength is fixed per setup</h3>
+        <p>Most detectors emit a constant strength (0.5–0.8). Only
+        <span class="mono">volume_spike</span>, <span class="mono">liquidity_grab</span>
+        and <span class="mono">rsi_sr_confluence</span> scale it with how extreme
+        the reading is.</p>
+      </div>
+      <div class="note">
+        <h3>Weight is separate</h3>
+        <p>Weight decides how much the setup moves the confluence score.
+        <span class="mono">liquidity_grab</span> carries 15, the most;
+        <span class="mono">session_open_volatility</span> carries 6, the least.</p>
+      </div>
+      <div class="note">
+        <h3>Everything is ATR-relative</h3>
+        <p>Distances are expressed in ATR, never in dollars, so the same rule
+        behaves the same on BTC at 64,000 and ETH at 1,900 and in quiet or wild
+        conditions.</p>
+      </div>
+    </div>
+  </section>
+
+  <div id="catalogue"></div>
+
+  <section class="cat">
+    <div class="cat-head">
+      <h2>How the nine score components read</h2>
+      <span class="count">aggregate direction</span>
+    </div>
+    <p class="cat-blurb">
+      Detectors are only one input. The headline score comes from nine weighted
+      components, each producing a signed value from −1 to +1. <b>Positive is always
+      bullish.</b> The weighted mean is the net direction; buy score is
+      <span class="mono">50 + 50 × net</span>, and sell score is
+      <span class="mono">101 − buy</span>.
+    </p>
+    <div class="comp-table-wrap">
+      <table class="comp">
+        <thead><tr>
+          <th>Component</th><th>Weight</th><th class="pos">Positive (+1) means</th>
+          <th class="neg">Negative (−1) means</th>
+        </tr></thead>
+        <tbody id="comps"></tbody>
+      </table>
+    </div>
+    <p class="cat-blurb" style="margin-top:16px">
+      Volatility is deliberately absent from that list. It has no direction — it
+      multiplies the final score down (to 0.72× in extreme conditions, 0.80× during
+      a squeeze, 0.85× when one ATR barely clears trading costs) rather than voting
+      either way.
+    </p>
+  </section>
+</div>
+
+<footer>
+  <div class="wrap foot">
+    <p><strong>On the diagrams.</strong> These are drawn from the threshold values in
+    the code, not captured from a charting platform. Published pages cannot load
+    external images, and third-party chart screenshots carry their own licensing —
+    but the practical reason is that a generic screenshot of "an EMA pullback" would
+    not show <em>these</em> conditions. A drawn figure can put the 0.45×ATR wick and
+    the exact EMA band where the detector actually looks for them.</p>
+    <p><strong>What this document is not.</strong> A detector firing means a pattern
+    printed. It is not a prediction and not advice. Backtesting in this repo found
+    these setups lose money after realistic costs, and the measured trade gate cuts
+    the loss roughly in half without turning it positive. Read this to understand
+    what the tool is telling you, not as a reason to take the trade.</p>
+  </div>
+</footer>
+
+<script>
+/* ------------------------------------------------------------------ figures
+   Small schematic renderer. Each figure is described as candles in a 0-100
+   price space plus optional levels, bands and curves, so the geometry in the
+   drawing matches the geometry in the detector rather than being decorative. */
+const NS='http://www.w3.org/2000/svg';
+const W=280, H=150, PAD=10;
+
+function fig(spec){
+  const n=spec.bars.length;
+  const slot=(W-PAD*2)/n, bw=Math.min(slot*0.58,14);
+  const y=v=>H-PAD-(v/100)*(H-PAD*2);
+  const x=i=>PAD+slot*i+slot/2;
+  let s=`<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="${spec.alt}">`;
+
+  (spec.bands||[]).forEach(b=>{
+    s+=`<rect x="0" y="${y(b.to)}" width="${W}" height="${Math.abs(y(b.from)-y(b.to))}"
+         fill="var(--${b.tone}-soft)" stroke="var(--${b.tone})" stroke-width="1"
+         stroke-dasharray="${b.dash||'0'}" opacity=".9"/>`;
+  });
+  (spec.levels||[]).forEach(l=>{
+    s+=`<line x1="0" y1="${y(l.v)}" x2="${W}" y2="${y(l.v)}"
+         stroke="var(--${l.tone||'line-strong'})" stroke-width="1"
+         stroke-dasharray="${l.dash||'4 3'}"/>`;
+    if(l.label) s+=`<text x="3" y="${y(l.v)-4}" font-size="9"
+         font-family="ui-monospace,Consolas,monospace"
+         fill="var(--${l.tone||'ink-3'})">${l.label}</text>`;
+  });
+  (spec.curves||[]).forEach(c=>{
+    const pts=c.pts.map((v,i)=>`${x(i)},${y(v)}`).join(' ');
+    s+=`<polyline points="${pts}" fill="none" stroke="var(--${c.tone})"
+         stroke-width="1.5" stroke-linecap="round" stroke-dasharray="${c.dash||'0'}"/>`;
+    if(c.label) s+=`<text x="${W-3}" y="${y(c.pts[c.pts.length-1])-5}" font-size="9"
+         text-anchor="end" font-family="ui-monospace,Consolas,monospace"
+         fill="var(--${c.tone})">${c.label}</text>`;
+  });
+
+  spec.bars.forEach((b,i)=>{
+    const up=b.c>=b.o;
+    const tone=b.tone||(up?'long':'short');
+    const cx=x(i);
+    s+=`<line x1="${cx}" y1="${y(b.h)}" x2="${cx}" y2="${y(b.l)}"
+         stroke="var(--${tone})" stroke-width="1.3"/>`;
+    const top=y(Math.max(b.o,b.c)), hgt=Math.max(Math.abs(y(b.o)-y(b.c)),1.5);
+    s+=`<rect x="${cx-bw/2}" y="${top}" width="${bw}" height="${hgt}"
+         fill="${b.hollow?'var(--panel)':`var(--${tone})`}"
+         stroke="var(--${tone})" stroke-width="1.2" rx="0.5"/>`;
+    if(b.mark) s+=`<text x="${cx}" y="${y(b.h)-6}" font-size="13" text-anchor="middle"
+         fill="var(--${tone})">${b.mark}</text>`;
+  });
+  return s+'</svg>';
+}
+
+/* ------------------------------------------------------------------ content */
+const CATS=[
+ {id:'trend', name:'Trend continuation', blurb:'These assume the move already underway keeps going. They need a trend filter to be worth anything — in a range every one of them hands you a loss on each swing.'},
+ {id:'reversion', name:'Mean reversion', blurb:'These assume a stretched price snaps back. The mirror risk of the trend group: in a real trend they will fade every leg of it.'},
+ {id:'breakout', name:'Breakout and expansion', blurb:'These trade the moment a level or a volatility regime gives way. The recurring trap is the fake break, which is why two of them demand confirmation before firing.'},
+ {id:'flow', name:'Order flow and positioning', blurb:'Derived from perpetual futures data rather than price shape — funding, forced liquidations and participation. Read contrarian: the crowded side is the fuel.'},
+ {id:'smc', name:'Liquidity and market structure', blurb:'Where resting orders sit and what happens when price reaches for them. The strongest of these — the liquidity grab — carries the highest weight of any detector.'},
+];
+
+const D=[
+/* ---------------- trend ---------------- */
+{cat:'trend', play:true, name:'EMA 9/21 cross with pullback entry', key:'ema_cross_pullback',
+ w:13, str:'0.40–0.70, decaying with age', tf:'1m · 5m · 15m',
+ desc:'The most-used crypto scalp. The <b>cross sets the regime</b>; the tradable moment is the first pullback into the EMA band while that cross is still fresh. Chasing the cross bar itself pays the worst price of the move.',
+ long:'EMA9 &gt; EMA21 <span class="op">and</span> cross ≤ 20 bars ago <span class="op">and</span> bar low ≤ max(EMA9, EMA21) <span class="op">and</span> close &gt; EMA9',
+ longG:'Price dipped into the band and closed back above the fast EMA.',
+ short:'EMA9 &lt; EMA21 <span class="op">and</span> cross ≤ 20 bars ago <span class="op">and</span> bar high ≥ min(EMA9, EMA21) <span class="op">and</span> close &lt; EMA9',
+ shortG:'Price rallied into the band and closed back below the fast EMA.',
+ neut:'cross older than 20 bars, <span class="op">or</span> price never touched the band, <span class="op">or</span> the close finished on the wrong side of EMA9',
+ neutG:'Strength decays as 0.70 − 0.015 × bars-since-cross, so a 20-bar-old cross is worth barely half a fresh one.',
+ fail:'Chop. In a range EMA9/21 cross back and forth every few bars and every pullback loses. Filter with EMA200 or the higher-timeframe trend component.',
+ figAlt:'Price pulling back into the EMA 9/21 band then closing above',
+ fig:{bars:[{o:30,h:38,l:28,c:36},{o:36,h:46,l:34,c:44},{o:44,h:52,l:42,c:50},{o:50,h:54,l:38,c:42,tone:'short'},{o:42,h:46,l:36,c:40,tone:'short'},{o:40,h:56,l:39,c:54,mark:'▲'}],
+   curves:[{pts:[28,34,41,45,44,45],tone:'accent',label:'EMA9'},{pts:[26,30,35,39,40,41],tone:'neutral',label:'EMA21'}]}},
+
+{cat:'trend', name:'EMA20 pullback in trend', key:'ema_pullback', w:12, str:'0.65', tf:'all',
+ desc:'The same idea one degree slower, with <b>EMA200 as the regime filter</b> and EMA20 as the shallow-pullback zone.',
+ long:'close &gt; EMA200 <span class="op">and</span> bar low ≤ EMA20 <span class="op">and</span> EMA20 &lt; close',
+ longG:'Established uptrend, price tagged EMA20 and held above it.',
+ short:'close &lt; EMA200 <span class="op">and</span> bar high ≥ EMA20 <span class="op">and</span> EMA20 &gt; close',
+ shortG:'Established downtrend, price rallied to EMA20 and was rejected.',
+ neut:'price on the wrong side of EMA200 for its direction, or the bar never reached EMA20',
+ neutG:'Both conditions must hold on the same closed bar.',
+ fail:'Late-trend pullbacks turn into reversals, and EMA200 lags badly after a regime change — it will still call the old trend for many bars.',
+ figAlt:'Uptrend above EMA200 with a pullback touching EMA20',
+ fig:{bars:[{o:34,h:42,l:32,c:40},{o:40,h:50,l:39,c:48},{o:48,h:54,l:40,c:44,tone:'short'},{o:44,h:48,l:38,c:46},{o:46,h:60,l:45,c:58,mark:'▲'}],
+   curves:[{pts:[33,38,43,44,46],tone:'accent',label:'EMA20'},{pts:[20,21,22,23,24],tone:'neutral',label:'EMA200'}]}},
+
+{cat:'trend', name:'Trend continuation on stacked EMAs', key:'trend_continuation', w:12, str:'0.60', tf:'all',
+ desc:'The strictest trend definition here: <b>EMA20, 50 and 200 stacked in order</b>, a pullback that touched EMA20, and a close that takes out the previous bar\'s extreme.',
+ long:'EMA20 &gt; EMA50 &gt; EMA200 <span class="op">and</span> previous bar low ≤ EMA20 <span class="op">and</span> close &gt; previous bar high',
+ longG:'Perfect bullish stack, pullback resolved upward.',
+ short:'EMA20 &lt; EMA50 &lt; EMA200 <span class="op">and</span> previous bar high ≥ EMA20 <span class="op">and</span> close &lt; previous bar low',
+ shortG:'Perfect bearish stack, pullback resolved downward.',
+ neut:'EMAs interleaved in any other order, or the pullback never resolved',
+ neutG:'Interleaved EMAs are themselves informative — that is a range, where the reversion group applies instead.',
+ fail:'Stacking is a lagging condition. It looks most perfect immediately before mean reversion.',
+ figAlt:'Three stacked EMAs with a pullback and breakout close',
+ fig:{bars:[{o:40,h:48,l:38,c:46},{o:46,h:52,l:44,c:50},{o:50,h:53,l:42,c:44,tone:'short'},{o:44,h:62,l:43,c:60,mark:'▲'}],
+   curves:[{pts:[40,45,47,49],tone:'accent',label:'20'},{pts:[32,35,38,40],tone:'neutral',label:'50'},{pts:[18,20,22,24],tone:'ink-3',label:'200'}]}},
+
+/* ---------------- reversion ---------------- */
+{cat:'reversion', play:true, name:'VWAP bounce', key:'vwap_bounce', w:11, str:'0.60', tf:'1m · 5m · 15m · 1h',
+ desc:'Session VWAP as the intraday line in the sand. Above it the average filled buyer is in profit and defends; below it they are underwater and sell rallies. <b>Trade the rejection off it, with the trend.</b>',
+ long:'close &gt; VWAP <span class="op">and</span> bar low ≤ VWAP + 0.30×ATR <span class="op">and</span> close &gt; open',
+ longG:'Wick tagged VWAP from above and the bar closed green.',
+ short:'close &lt; VWAP <span class="op">and</span> bar high ≥ VWAP − 0.30×ATR <span class="op">and</span> close &lt; open',
+ shortG:'Wick tagged VWAP from below and the bar closed red.',
+ neut:'price never came within 0.30×ATR of VWAP, or it closed through to the other side',
+ neutG:'A close that holds the far side is a regime change, not a deeper dip.',
+ fail:'Trendless days pin price to VWAP and it gets tagged twenty times. VWAP also resets at 00:00 UTC, so the first hour of a session carries almost no information.',
+ figAlt:'Price above VWAP wicking down to it and closing green',
+ fig:{bars:[{o:52,h:58,l:50,c:56},{o:56,h:58,l:44,c:50,tone:'short'},{o:50,h:54,l:42,c:52,mark:'▲'},{o:52,h:64,l:51,c:62}],
+   levels:[{v:42,label:'VWAP',tone:'accent',dash:'5 3'}]}},
+
+{cat:'reversion', name:'VWAP fade at two sigma', key:'vwap_fade', w:10, str:'0.60', tf:'1m · 5m · 15m · 1h',
+ desc:'The opposite trade to the bounce. Two standard deviations from the session\'s volume-weighted average is a <b>statistically stretched price</b>, and market makers lean against it.',
+ long:'close &lt; VWAP − 2σ',
+ longG:'Stretched below the band — buy the snap back toward VWAP.',
+ short:'close &gt; VWAP + 2σ',
+ shortG:'Stretched above the band — sell the snap back toward VWAP.',
+ neut:'close anywhere inside the ±2σ band, or fewer than 12 bars into the session',
+ neutG:'σ needs 12 bars to stabilise, so early-session bars produce nothing.',
+ fail:'Trend days ride the 2σ band for hours and every fade loses. This is the direct opposite of vwap_bounce — check which regime you are in before acting on either.',
+ figAlt:'Price closing outside the upper VWAP two-sigma band',
+ fig:{bars:[{o:40,h:46,l:38,c:44},{o:44,h:56,l:43,c:54},{o:54,h:72,l:53,c:70,mark:'▼',tone:'short'},{o:70,h:72,l:58,c:60,tone:'short'}],
+   levels:[{v:66,label:'VWAP +2σ',tone:'short'},{v:44,label:'VWAP',tone:'accent',dash:'5 3'},{v:22,label:'VWAP −2σ',tone:'long'}]}},
+
+{cat:'reversion', play:true, name:'RSI at support or resistance', key:'rsi_sr_confluence', w:9,
+ str:'0.50–0.86, scaling with how extreme RSI is', tf:'5m · 15m · 1h',
+ desc:'RSI alone is noise — trends stay oversold for hours. <b>Oversold at a level people already defended</b> is different: momentum is exhausted exactly where resting bids sit. The level is the edge; RSI only times it.',
+ long:'RSI(14) &lt; 36 <span class="op">and</span> bar low within 0.45×ATR of one of the last 6 pivot lows',
+ longG:'Exhaustion arriving at known support.',
+ short:'RSI(14) &gt; 64 <span class="op">and</span> bar high within 0.45×ATR of one of the last 6 pivot highs',
+ shortG:'Exhaustion arriving at known resistance.',
+ neut:'RSI between 36 and 64, <span class="op">or</span> an RSI extreme with no pivot level nearby',
+ neutG:'An extreme in open space is explicitly not a signal here — that is the whole point of the filter.',
+ fail:'Strong trends. In a real downtrend every support breaks and RSI stays pinned low; this will hand you every knife.',
+ figAlt:'Price falling to a prior support level with RSI oversold',
+ fig:{bars:[{o:60,h:62,l:50,c:52,tone:'short'},{o:52,h:54,l:42,c:44,tone:'short'},{o:44,h:46,l:30,c:38,mark:'▲'},{o:38,h:52,l:36,c:50}],
+   levels:[{v:32,label:'pivot low ±0.45 ATR',tone:'long'}],
+   bands:[{from:27,to:37,tone:'long',dash:'3 3'}]}},
+
+{cat:'reversion', name:'RSI(2) extreme', key:'rsi2_extreme', w:8, str:'0.50', tf:'5m · 15m · 1h',
+ desc:'A very short RSI measures <b>immediate exhaustion</b> rather than trend, so its extremes mark short-term capitulation.',
+ long:'RSI(2) &lt; 5',
+ longG:'Washed out.',
+ short:'RSI(2) &gt; 95',
+ shortG:'Overheated.',
+ neut:'RSI(2) between 5 and 95, <span class="op">or</span> the last 10 closes show no movement at all',
+ neutG:'That second guard exists because RSI is undefined on a flat series and the implementation pins it to an extreme — without it, a dead tape read as "deeply oversold".',
+ fail:'Fires constantly on 1m and stays pinned during real trends. Needs a level or VWAP confluence to be worth taking.',
+ figAlt:'Sharp sell-off producing an RSI(2) reading below five',
+ fig:{bars:[{o:70,h:72,l:60,c:62,tone:'short'},{o:62,h:63,l:48,c:50,tone:'short'},{o:50,h:51,l:34,c:36,tone:'short'},{o:36,h:38,l:24,c:26,tone:'short',mark:'▲'}],
+   levels:[{v:20,label:'RSI(2) < 5',tone:'long'}]}},
+
+{cat:'reversion', name:'Bollinger mean reversion', key:'mean_reversion', w:8, str:'0.50', tf:'all',
+ desc:'The <b>re-entry, not the excursion</b>, is the signal. Price closing back inside the band says the stretch is over.',
+ long:'previous close z &lt; −2 <span class="op">and</span> current close z &gt; −2',
+ longG:'Came back inside the lower band.',
+ short:'previous close z &gt; +2 <span class="op">and</span> current close z &lt; +2',
+ shortG:'Came back inside the upper band.',
+ neut:'both closes on the same side of the ±2 boundary — either still stretched, or never stretched',
+ neutG:'It requires the crossing itself, so it fires once per excursion.',
+ fail:'In trends price walks the band, and each re-entry is a losing counter-trend entry.',
+ figAlt:'Price excursion below the lower band then closing back inside',
+ fig:{bars:[{o:44,h:46,l:34,c:36,tone:'short'},{o:36,h:38,l:20,c:22,tone:'short'},{o:22,h:40,l:21,c:38,mark:'▲'}],
+   levels:[{v:26,label:'−2σ',tone:'long'},{v:50,label:'mid',tone:'ink-3',dash:'2 4'},{v:74,label:'+2σ',tone:'short'}]}},
+
+{cat:'reversion', name:'Support / resistance reaction', key:'sr_reaction', w:8, str:'0.55', tf:'all',
+ desc:'A <b>rejection wick off a recent pivot</b>. Levels that produced reversals attract resting orders and often produce another.',
+ long:'|bar low − pivot low| &lt; 0.5×ATR <span class="op">and</span> close &gt; pivot + 0.25×ATR',
+ longG:'Wick pierced support and the close recovered clear of it.',
+ short:'|bar high − pivot high| &lt; 0.5×ATR <span class="op">and</span> close &lt; pivot − 0.25×ATR',
+ shortG:'Wick pierced resistance and the close was rejected away.',
+ neut:'no pivot within 0.5×ATR, or the close failed to clear the level by 0.25×ATR',
+ neutG:'Checks only the five most recent pivots on each side.',
+ fail:'Every level eventually breaks, and the third or fourth test is usually the one that goes.',
+ figAlt:'Long lower wick rejecting a support level',
+ fig:{bars:[{o:56,h:58,l:48,c:50,tone:'short'},{o:50,h:52,l:44,c:46,tone:'short'},{o:46,h:56,l:30,c:54,mark:'▲'}],
+   levels:[{v:36,label:'pivot low',tone:'long'}]}},
+
+/* ---------------- breakout ---------------- */
+{cat:'breakout', play:true, name:'Breakout with retest', key:'breakout_retest', w:14, str:'0.68', tf:'5m · 15m · 1h',
+ desc:'Most low-timeframe crypto breakouts are liquidity sweeps. <b>Demanding a retest filters them</b>: a fake break cannot reclaim the level, a real one turns old resistance into support because trapped sellers cover there.',
+ long:'a pivot high was closed through by &gt; 0.2×ATR within the last 20 bars <span class="op">and</span> bar low ≤ level + 0.35×ATR <span class="op">and</span> close &gt; level <span class="op">and</span> close &gt; previous close',
+ longG:'Broke resistance, came back to it, held it as support.',
+ short:'a pivot low was closed through by &gt; 0.2×ATR within the last 20 bars <span class="op">and</span> bar high ≥ level − 0.35×ATR <span class="op">and</span> close &lt; level <span class="op">and</span> close &lt; previous close',
+ shortG:'Broke support, rallied back to it, failed there.',
+ neut:'no qualifying break in the window, price has not returned to the level, or the retest closed through',
+ neutG:'Needs proof that price was on the other side before the break, so it cannot fire on a level price merely drifted past.',
+ fail:'The best breakouts never retest, so you miss them. A retest that keeps going through is a failed break — cut, never average.',
+ figAlt:'Break above resistance followed by a successful retest',
+ fig:{bars:[{o:34,h:40,l:32,c:38},{o:38,h:44,l:36,c:42},{o:42,h:58,l:41,c:56},{o:56,h:58,l:46,c:48,tone:'short'},{o:48,h:52,l:44,c:50,mark:'▲'},{o:50,h:64,l:49,c:62}],
+   levels:[{v:46,label:'broken level',tone:'accent'}]}},
+
+{cat:'breakout', play:true, name:'Bollinger squeeze expansion', key:'bb_squeeze', w:10, str:'0.62', tf:'5m · 15m · 1h',
+ desc:'Volatility is mean-reverting even when price is not. Compression means positioning building with no resolution; the expansion is that positioning being forced to pick a side. <b>Direction comes from the break, never guessed during the squeeze.</b>',
+ long:'previous band-width percentile ≤ 0.22 <span class="op">and</span> current percentile &gt; 1.25 × previous <span class="op">and</span> close &gt; previous upper band',
+ longG:'Squeeze released upward.',
+ short:'previous band-width percentile ≤ 0.22 <span class="op">and</span> current percentile &gt; 1.25 × previous <span class="op">and</span> close &lt; previous lower band',
+ shortG:'Squeeze released downward.',
+ neut:'width was not in the bottom 22% of its own 120-bar history, <span class="op">or</span> it is not expanding yet, <span class="op">or</span> the close is still inside the bands',
+ neutG:'During the squeeze itself the correct output is nothing — the volatility component also damps the whole score by 0.80× in that regime.',
+ fail:'The first expansion bar is often the entire move, so you buy the high. Squeezes can also expand, fail and re-compress twice before the real move.',
+ figAlt:'Narrow Bollinger bands widening as price breaks upward',
+ fig:{bars:[{o:46,h:50,l:44,c:48},{o:48,h:50,l:45,c:47},{o:47,h:49,l:44,c:46},{o:46,h:50,l:45,c:49},{o:49,h:70,l:48,c:68,mark:'▲'}],
+   curves:[{pts:[56,54,53,53,74],tone:'ink-3',dash:'3 2'},{pts:[38,42,43,43,24],tone:'ink-3',dash:'3 2'}]}},
+
+{cat:'breakout', name:'Market structure break', key:'structure_break', w:12, str:'0.70', tf:'all',
+ desc:'Trend change defined on price alone, with no indicator lag: a close beyond the <b>last confirmed swing</b>.',
+ long:'previous close ≤ last pivot high &lt; current close',
+ longG:'Bullish break of structure.',
+ short:'previous close ≥ last pivot low &gt; current close',
+ shortG:'Bearish break of structure.',
+ neut:'close on the same side of both pivots as the previous bar',
+ neutG:'Pivots are 5-bar fractals, so confirmation lags 5 bars behind the actual swing.',
+ fail:'That confirmation lag means on 1m the break is often already extended by the time it is recognised.',
+ figAlt:'Close pushing above the last confirmed swing high',
+ fig:{bars:[{o:36,h:52,l:34,c:40,tone:'short'},{o:40,h:44,l:30,c:32,tone:'short'},{o:32,h:40,l:31,c:38},{o:38,h:46,l:37,c:44},{o:44,h:60,l:43,c:58,mark:'▲'}],
+   levels:[{v:52,label:'last swing high',tone:'accent'}]}},
+
+{cat:'breakout', name:'Opening range breakout', key:'orb', w:12, str:'0.70', tf:'1m · 5m · 15m',
+ desc:'The first 30 minutes of the UTC session is where the day\'s first two-sided auction happens. <b>Breaking it means one side won.</b>',
+ long:'previous close ≤ 30-min range high &lt; current close',
+ longG:'Closed above the opening range.',
+ short:'previous close ≥ 30-min range low &gt; current close',
+ shortG:'Closed below the opening range.',
+ neut:'price inside the range, or still within the first 30 minutes',
+ neutG:'The range must finish forming before any signal is possible.',
+ fail:'Crypto has no true daily open — the UTC session boundary is arbitrary, which makes this far weaker here than in equities.',
+ figAlt:'Price breaking above the opening range high',
+ fig:{bars:[{o:44,h:54,l:38,c:48},{o:48,h:52,l:40,c:42,tone:'short'},{o:42,h:50,l:41,c:48},{o:48,h:62,l:47,c:60,mark:'▲'}],
+   bands:[{from:38,to:54,tone:'neutral',dash:'4 3'}]}},
+
+{cat:'breakout', name:'Session-open volatility', key:'session_open_volatility', w:6, str:'0.50', tf:'1m · 5m · 15m',
+ desc:'The only <b>directionless</b> detector. It is a regime warning, not a trade: liquidity step-changes at these times, which is when ranges break and stops get run.',
+ long:'—', longG:'This detector never returns long.',
+ short:'—', shortG:'This detector never returns short.',
+ neut:'Always neutral when it fires: bar range &gt; 2×ATR within 30 minutes of the UTC (00:00), London (08:00) or New York (13:30) open',
+ neutG:'It still contributes a weight of 6 to the confluence score as evidence of conditions, but adds nothing to direction.',
+ fail:'Direction-neutral by design, so it cannot be traded alone. Treat it as an instruction to widen stops.',
+ figAlt:'An outsized bar at the session open',
+ fig:{bars:[{o:46,h:50,l:44,c:48},{o:48,h:52,l:45,c:47},{o:47,h:78,l:24,c:70,mark:'●',tone:'neutral'},{o:70,h:74,l:60,c:64,tone:'short'}]}},
+
+/* ---------------- flow ---------------- */
+{cat:'flow', name:'Funding rate extreme', key:'funding_extreme', w:14, str:'0.70', tf:'all',
+ desc:'Funding is the price of leverage. When one side pays heavily to hold, <b>that side is crowded — and is the side that gets liquidated first.</b> Read strictly contrarian.',
+ long:'funding &lt; 10th percentile of its 90-day history <span class="op">and</span> funding &lt; 0',
+ longG:'Shorts are crowded and paying. Squeeze fuel is upward.',
+ short:'funding &gt; 90th percentile of its 90-day history <span class="op">and</span> funding &gt; 0',
+ shortG:'Longs are crowded and paying. Squeeze fuel is downward.',
+ neut:'funding inside the 10th–90th percentile band, or fewer than 60 historical readings available',
+ neutG:'Both the percentile and the sign must agree, so a high-but-negative rate produces nothing.',
+ fail:'Funding can stay extreme through an entire trend leg. Percentiles help but do not solve it.',
+ figAlt:'Funding rate spiking above its ninetieth percentile',
+ fig:{bars:[{o:50,h:54,l:46,c:52},{o:52,h:60,l:50,c:58},{o:58,h:66,l:56,c:64},{o:64,h:82,l:62,c:80,mark:'▼',tone:'short'}],
+   levels:[{v:70,label:'90th pct — crowded longs',tone:'short'},{v:24,label:'10th pct — crowded shorts',tone:'long'}]}},
+
+{cat:'flow', name:'Liquidation cascade', key:'liquidation_cascade', w:14, str:'0.80', tf:'1m · 5m',
+ desc:'Forced selling is <b>price-insensitive</b>: it overshoots, then snaps back once the queue clears. The snap-back is the trade, not the cascade.',
+ long:'≥ 5 liquidations <span class="op">and</span> &gt; $2M notional in 60s <span class="op">and</span> more than half the notional is SELL side',
+ longG:'SELL-side liquidations are longs being closed out — a flush down, so the reversion is up.',
+ short:'≥ 5 liquidations <span class="op">and</span> &gt; $2M notional in 60s <span class="op">and</span> more than half is BUY side',
+ shortG:'BUY-side liquidations are shorts being squeezed — a spike up, so the reversion is down.',
+ neut:'fewer than 5 events or under $2M notional in the last 60 seconds',
+ neutG:'Requires the Binance futures liquidation stream, which is blocked on some networks — including from India. If it never fires, that is why.',
+ fail:'Cascades chain: one triggers the next liquidation band. Nothing in the stream tells you which is the last.',
+ figAlt:'Sharp liquidation flush followed by a recovery',
+ fig:{bars:[{o:66,h:68,l:60,c:62,tone:'short'},{o:62,h:64,l:30,c:34,tone:'short',mark:'▲'},{o:34,h:52,l:32,c:50},{o:50,h:58,l:48,c:56}]}},
+
+{cat:'flow', name:'Volume spike', key:'volume_spike', w:10, str:'z ÷ 6, capped at 1.0', tf:'all',
+ desc:'Confirmation, not a signal. Real moves need participation; a break on no volume is usually noise. <b>Direction is taken from the bar\'s own return.</b>',
+ long:'volume z-score ≥ 3 <span class="op">and</span> bar return &gt; 0',
+ longG:'Heavy participation on an up bar.',
+ short:'volume z-score ≥ 3 <span class="op">and</span> bar return &lt; 0',
+ shortG:'Heavy participation on a down bar.',
+ neut:'z below 3, <span class="op">or</span> the bar return is exactly zero or missing',
+ neutG:'That last clause was a real bug — a spike with no price change used to be reported as short, inventing a bearish signal out of nothing.',
+ fail:'Spikes mark exhaustion tops and bottoms too. Identical reading, opposite meaning — use only as a filter on another setup.',
+ figAlt:'A high-volume up bar against a low-volume baseline',
+ fig:{bars:[{o:44,h:48,l:42,c:46},{o:46,h:49,l:44,c:47},{o:47,h:50,l:45,c:48},{o:48,h:74,l:47,c:72,mark:'▲'}]}},
+
+/* ---------------- smc ---------------- */
+{cat:'smc', play:true, name:'Liquidity grab / stop hunt', key:'liquidity_grab', w:15,
+ str:'0.55–0.85, scaling with wick size', tf:'all, cleanest on 1m and 5m',
+ desc:'Stops cluster just beyond obvious highs and lows. Price is <b>pulled there because that is where the resting liquidity is</b>, fills the size, then leaves. The sweep is the fill; the rejection close is the tell that it was liquidity-seeking rather than a real break. Highest weight of any detector.',
+ long:'bar low &lt; last pivot low <span class="op">and</span> close &gt; that pivot <span class="op">and</span> lower wick &gt; 0.45×ATR',
+ longG:'Sell stops taken below the low, then reclaimed.',
+ short:'bar high &gt; last pivot high <span class="op">and</span> close &lt; that pivot <span class="op">and</span> upper wick &gt; 0.45×ATR',
+ shortG:'Buy stops taken above the high, then rejected.',
+ neut:'the swing was not exceeded, the close stayed beyond it (a genuine break), or the wick is under 0.45×ATR',
+ neutG:'Strength scales as 0.55 + wick÷ATR × 0.2, capped at 0.85 — a bigger sweep counts for more.',
+ fail:'Indistinguishable in real time from a genuine break that never comes back. Deep books like BTC and ETH reject more often than thin alts, which is why it works better on majors.',
+ figAlt:'Wick sweeping below a swing low then closing back above it',
+ fig:{bars:[{o:52,h:56,l:46,c:48,tone:'short'},{o:48,h:50,l:42,c:44,tone:'short'},{o:44,h:56,l:22,c:54,mark:'▲'},{o:54,h:64,l:52,c:62}],
+   levels:[{v:34,label:'swing low — stops rest here',tone:'accent'}]}},
+
+{cat:'smc', name:'Fair value gap', key:'fvg', w:8, str:'0.55', tf:'all',
+ desc:'Price moved so fast that a band <b>never auctioned</b>. Those untraded pockets often get revisited to fill the missing volume.',
+ long:'low of the current bar &gt; high of the bar three back, by more than 0.5×ATR',
+ longG:'Bullish imbalance left below.',
+ short:'high of the current bar &lt; low of the bar three back, by more than 0.5×ATR',
+ shortG:'Bearish imbalance left above.',
+ neut:'the three-candle sequence overlaps, or the gap is under 0.5×ATR',
+ neutG:'Strictly a three-bar geometric test — nothing about volume enters it.',
+ fail:'Plenty of gaps never fill. Strong displacement means the gap is a trend footprint, not a magnet.',
+ figAlt:'Three-candle sequence leaving an untraded gap',
+ fig:{bars:[{o:30,h:38,l:28,c:36},{o:40,h:62,l:39,c:60},{o:60,h:70,l:52,c:68,mark:'▲'}],
+   bands:[{from:38,to:52,tone:'long',dash:'3 3'}]}},
+
+{cat:'smc', name:'Order block', key:'order_block', w:8, str:'0.55', tf:'all',
+ desc:'A displacement candle implies a large participant filled at the <b>prior candle\'s price</b>. That prior range is treated as unfilled demand or supply.',
+ long:'current body &gt; 2×ATR <span class="op">and</span> previous candle closed down',
+ longG:'Bullish displacement straight off a down candle — that candle is the demand zone.',
+ short:'current body &lt; −2×ATR <span class="op">and</span> previous candle closed up',
+ shortG:'Bearish displacement straight off an up candle — that candle is the supply zone.',
+ neut:'body under 2×ATR, or the previous candle points the same way',
+ neutG:'Uses the candle body only, so long wicks do not qualify as displacement.',
+ fail:'Highly discretionary — which candle counts as the block is a choice, and the concept has weak statistical support.',
+ figAlt:'Down candle followed by a large bullish displacement bar',
+ fig:{bars:[{o:52,h:54,l:40,c:42,tone:'short'},{o:42,h:80,l:41,c:78,mark:'▲'}],
+   bands:[{from:40,to:54,tone:'long',dash:'3 3'}]}},
+];
+
+const COMPS=[
+ ['Higher-timeframe trend',18,'Every timeframe above the one you are viewing points up, weighted so 4h counts more than 15m','Higher timeframes point down — a low-timeframe long here is a fade, not a trend trade'],
+ ['Detected setups',18,'The detectors that fired this bar are long-leaning, weighted by reliability','They are short-leaning. Conflicting setups on one bar cut the value by 40%'],
+ ['Position within structure',15,'More headroom above than risk below — clear air to the next resistance','Pressed under a strong ceiling with support far away'],
+ ['Local trend structure',12,'EMA 9/21/50/200 stacked bullish on this timeframe','Stacked bearish. Near zero means interleaved — a range, not a trend'],
+ ['Order flow',12,'Volume, taker-buy share and liquidation skew all confirm the up move','Flow contradicts price — distribution rather than accumulation'],
+ ['Momentum',10,'RSI(14) above 50 and the 3-bar rate of change is positive','Below 50 and falling'],
+ ['VWAP position',9,'On the bullish side of session VWAP and not stretched','Bearish side. Past the per-timeframe stretch limit the sign inverts — the stretch itself becomes the signal'],
+ ['Funding / positioning',8,'The crowd is short, so the fuel points up','The crowd is long. Always read contrarian'],
+];
+
+/* ------------------------------------------------------------------ render */
+const cats=document.getElementById('catalogue');
+CATS.forEach(c=>{
+  const list=D.filter(d=>d.cat===c.id);
+  const sec=document.createElement('section');
+  sec.className='cat';
+  sec.innerHTML=`<div class="cat-head"><h2>${c.name}</h2>
+      <span class="count">${list.length} detector${list.length>1?'s':''}</span></div>
+    <p class="cat-blurb">${c.blurb}</p>`;
+  list.forEach(d=>{
+    const e=document.createElement('article');
+    e.className='entry';
+    e.innerHTML=`
+      <div class="entry-head">
+        <h3>${d.name}</h3><span class="key">${d.key}</span>
+        <div class="meta">
+          ${d.play?'<span class="chip play">scalping playbook</span>':''}
+          <span class="chip">weight ${d.w}</span>
+          <span class="chip">strength ${d.str}</span>
+          <span class="chip">${d.tf}</span>
+        </div>
+      </div>
+      <div class="body">
+        <div class="figure">${fig({...d.fig,alt:d.figAlt})}
+          <p class="cap">${d.figAlt}.</p></div>
+        <div class="detail">
+          <p class="desc">${d.desc}</p>
+          <table class="sig">
+            <thead><tr><th>Reading</th><th>Condition on the closed bar</th></tr></thead>
+            <tbody>
+              <tr><td><span class="verdict l">LONG</span></td>
+                  <td><span class="cond">${d.long}</span><span class="gloss">${d.longG}</span></td></tr>
+              <tr><td><span class="verdict s">SHORT</span></td>
+                  <td><span class="cond">${d.short}</span><span class="gloss">${d.shortG}</span></td></tr>
+              <tr><td><span class="verdict n">NONE</span></td>
+                  <td><span class="cond">${d.neut}</span><span class="gloss">${d.neutG}</span></td></tr>
+            </tbody>
+          </table>
+          <div class="fails"><b>Known failure mode</b>${d.fail}</div>
+        </div>
+      </div>`;
+    sec.appendChild(e);
+  });
+  cats.appendChild(sec);
+});
+
+document.getElementById('comps').innerHTML=COMPS.map(([n,w,p,m])=>
+  `<tr><td><b>${n}</b></td><td class="w">${w}</td><td>${p}</td><td>${m}</td></tr>`).join('');
+</script>
+
+</body>
+</html>
